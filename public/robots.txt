@@ -1,0 +1,18 @@
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://travelplus.app/sitemap.xml
+
+# Disallow admin or API routes
+Disallow: /api/
+Disallow: /.netlify/
+Disallow: /admin/
+
+# Allow search engines to index everything else
+Allow: /plan
+Allow: /itinerary/
+Allow: /about
+
+# Crawl delay (in seconds)
+Crawl-delay: 1

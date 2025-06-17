@@ -1,0 +1,21 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Circle -->
+  <circle cx="256" cy="256" r="240" fill="url(#gradient)"/>
+  
+  <!-- T+ Logo -->
+  <g transform="translate(256, 256)">
+    <!-- T -->
+    <path d="M -120 -80 L -120 -120 L -20 -120 L -20 -80 L -60 -80 L -60 80 L -100 80 L -100 -80 Z" fill="white"/>
+    
+    <!-- + -->
+    <path d="M 40 -60 L 80 -60 L 80 -20 L 120 -20 L 120 20 L 80 20 L 80 60 L 40 60 L 40 20 L 0 20 L 0 -20 L 40 -20 Z" fill="white"/>
+  </g>
+  
+  <!-- Gradient Definition -->
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+</svg>

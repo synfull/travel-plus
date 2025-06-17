@@ -1,7 +1,13 @@
 [build]
   command = "npm run build"
-  functions = "netlify/functions"
   publish = "dist"
+  functions = "netlify/functions"
+
+[dev]
+  command = "npm run dev"
+  targetPort = 3000
+  publish = "dist"
+  framework = "vite"
 
 [build.environment]
   NODE_VERSION = "18"
