@@ -2,7 +2,27 @@
 
 export const API_CONFIG = {
     // Netlify Functions endpoint
-    FUNCTIONS_URL: import.meta.env.VITE_API_URL || '/.netlify/functions',
+    FUNCTIONS_URL: (() => {
+      const envUrl = import.meta.env.VITE_API_URL
+      const isDev = import.meta.env.DEV
+      const devUrl = 'http://localhost:8888/.netlify/functions'
+      const prodUrl = '/.netlify/functions'
+      
+      console.log('🔧 API Config Debug:', { envUrl, isDev, devUrl, prodUrl })
+      
+      if (envUrl) {
+        console.log('🔧 Using VITE_API_URL:', envUrl)
+        return envUrl
+      }
+      
+      if (isDev) {
+        console.log('🔧 Using dev URL:', devUrl)
+        return devUrl
+      }
+      
+      console.log('🔧 Using prod URL:', prodUrl)
+      return prodUrl
+    })(),
     
     // External API endpoints
     AMADEUS: {

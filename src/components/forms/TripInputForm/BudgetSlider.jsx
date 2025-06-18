@@ -69,7 +69,7 @@ export default function BudgetSlider({ value, onChange, budgetType, onBudgetType
           />
           
           {/* Custom thumb */}
-          <style jsx>{`
+          <style>{`
             .slider::-webkit-slider-thumb {
               appearance: none;
               width: 24px;
