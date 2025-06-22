@@ -60,6 +60,10 @@ export default defineConfig({
       }
     })
   ],
+  define: {
+    // Prevent Node.js globals from being used in browser
+    global: 'globalThis',
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -71,6 +75,9 @@ export default defineConfig({
       '@styles': path.resolve(__dirname, './src/styles'),
       '@contexts': path.resolve(__dirname, './src/contexts')
     }
+  },
+  optimizeDeps: {
+    exclude: ['dotenv'] // Exclude dotenv from browser bundle
   },
   server: {
     port: 3000,

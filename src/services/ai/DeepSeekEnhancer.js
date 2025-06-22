@@ -9,19 +9,21 @@
  * - Includes duplicate detection
  */
 
+// Environment variables should be loaded by the calling application
+
 export class DeepSeekEnhancer {
   constructor(options = {}) {
     this.options = {
       enabled: options.enabled || false,
       maxRetries: options.maxRetries || 2,
-      timeoutMs: options.timeoutMs || 10000,
+      timeoutMs: options.timeoutMs || 30000, // Increased to 30 seconds for better reliability
       enhancementMode: options.enhancementMode || 'descriptions_only',
       enableQualityChecks: options.enableQualityChecks !== false,
       ...options
     }
 
     // Get API key with fallback options
-    this.apiKey = this.getApiKey()
+    this.apiKey = options.apiKey || this.getApiKey()
     this.baseUrl = 'https://api.deepseek.com/v1/chat/completions'
     
     // Enhancement modes
@@ -48,17 +50,35 @@ export class DeepSeekEnhancer {
    * Get API key with multiple fallback options
    */
   getApiKey() {
+    let apiKey = null
+    
     // Try Node.js environment variables first
     if (typeof process !== 'undefined' && process.env) {
-      return process.env.DEEPSEEK_API_KEY || 
-             process.env.VITE_DEEPSEEK_API_KEY
+      apiKey = process.env.DEEPSEEK_API_KEY || process.env.VITE_DEEPSEEK_API_KEY
+      if (apiKey) {
+        console.log('🔑 DeepSeekEnhancer: Found API key in process.env')
+        return apiKey
+      }
     }
     
     // Try browser environment variables
     if (typeof import.meta !== 'undefined' && import.meta.env) {
-      return import.meta.env.VITE_DEEPSEEK_API_KEY
+      apiKey = import.meta.env.VITE_DEEPSEEK_API_KEY
+      if (apiKey) {
+        console.log('🔑 DeepSeekEnhancer: Found API key in import.meta.env')
+        return apiKey
+      }
     }
     
+    // Debug: Show what environment variables are available
+    if (typeof process !== 'undefined' && process.env) {
+      const envKeys = Object.keys(process.env).filter(key => 
+        key.toLowerCase().includes('deepseek') || key.toLowerCase().includes('api')
+      )
+      console.log('🔍 DeepSeekEnhancer: Available env keys:', envKeys.length > 0 ? envKeys : 'none found')
+    }
+    
+    console.warn('⚠️ DeepSeekEnhancer: No API key found in any environment')
     return null
   }
 
@@ -176,6 +196,10 @@ export class DeepSeekEnhancer {
     try {
       console.log(`🌐 DeepSeekEnhancer: Calling API (attempt ${retryCount + 1})`)
       
+      // Create abort controller for timeout handling
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), this.options.timeoutMs)
+      
       const response = await fetch(this.baseUrl, {
         method: 'POST',
         headers: {
@@ -197,8 +221,10 @@ export class DeepSeekEnhancer {
           max_tokens: 2000,
           temperature: 0.7
         }),
-        signal: AbortSignal.timeout(this.options.timeoutMs)
+        signal: controller.signal
       })
+
+      clearTimeout(timeoutId)
 
       if (!response.ok) {
         throw new Error(`DeepSeek API error: ${response.status} ${response.statusText}`)
@@ -216,6 +242,10 @@ export class DeepSeekEnhancer {
 
     } catch (error) {
       console.warn(`⚠️ DeepSeekEnhancer: API call failed (attempt ${retryCount + 1}):`, error.message)
+      
+      if (error.name === 'AbortError') {
+        console.warn(`⏰ DeepSeekEnhancer: Request timed out after ${this.options.timeoutMs}ms`)
+      }
       
       if (retryCount < this.options.maxRetries) {
         console.log(`🔄 DeepSeekEnhancer: Retrying in 2 seconds...`)
@@ -323,7 +353,15 @@ Create a compelling story that makes the trip feel intentional and connected.`
    */
   parseDescriptionEnhancements(originalVenues, aiResponse) {
     try {
-      const parsed = JSON.parse(aiResponse)
+      // Clean the response - remove markdown code blocks if present
+      let cleanResponse = aiResponse.trim()
+      if (cleanResponse.startsWith('```json')) {
+        cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+      } else if (cleanResponse.startsWith('```')) {
+        cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '')
+      }
+      
+      const parsed = JSON.parse(cleanResponse)
       const enhancements = parsed.enhancements || []
       
       return originalVenues.map(venue => {
@@ -358,7 +396,15 @@ Create a compelling story that makes the trip feel intentional and connected.`
    */
   parseInsightEnhancements(originalVenues, aiResponse) {
     try {
-      const parsed = JSON.parse(aiResponse)
+      // Clean the response - remove markdown code blocks if present
+      let cleanResponse = aiResponse.trim()
+      if (cleanResponse.startsWith('```json')) {
+        cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+      } else if (cleanResponse.startsWith('```')) {
+        cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '')
+      }
+      
+      const parsed = JSON.parse(cleanResponse)
       const insights = parsed.insights || []
       
       return originalVenues.map(venue => {
@@ -394,7 +440,15 @@ Create a compelling story that makes the trip feel intentional and connected.`
    */
   parseNarrativeEnhancements(originalVenues, aiResponse) {
     try {
-      const parsed = JSON.parse(aiResponse)
+      // Clean the response - remove markdown code blocks if present
+      let cleanResponse = aiResponse.trim()
+      if (cleanResponse.startsWith('```json')) {
+        cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+      } else if (cleanResponse.startsWith('```')) {
+        cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '')
+      }
+      
+      const parsed = JSON.parse(cleanResponse)
       const narrative = parsed.narrative || {}
       const venueNarratives = parsed.venues || []
       

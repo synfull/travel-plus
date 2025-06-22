@@ -25,8 +25,8 @@ class SmartItineraryGenerator {
     this.useNewEngine = true // Set to true to test the new engine
     this.usePhase3Discovery = true // Enable Phase 3 AI-enhanced discovery
     
-    // Phase 3.5A: DeepSeek Enhancement Flags (SAFETY FIRST)
-    this.enableDeepSeekEnhancement = false // Start disabled for safety
+    // Phase 3.5A: DeepSeek Enhancement Flags (READY FOR PRODUCTION)
+    this.enableDeepSeekEnhancement = true // ENABLED: API is working properly
     this.deepSeekEnhancementMode = 'descriptions_only' // Conservative mode
     this.deepSeekFallbackOnly = true // Only use when Google Places succeeds
     
@@ -41,13 +41,15 @@ class SmartItineraryGenerator {
       usePhase3Discovery: this.usePhase3Discovery // Now properly references the flag above
     })
     
-    // Phase 3.5A: Initialize DeepSeek enhancer (DISABLED by default)
+    // Phase 3.5A: Initialize DeepSeek enhancer with API key
+    const deepSeekApiKey = import.meta.env.VITE_DEEPSEEK_API_KEY
     this.deepSeekEnhancer = new DeepSeekEnhancer({
       enabled: this.enableDeepSeekEnhancement,
       enhancementMode: this.deepSeekEnhancementMode,
       maxRetries: 2,
-      timeoutMs: 15000, // Conservative timeout
-      enableQualityChecks: true
+      timeoutMs: 30000, // Increased timeout for reliability
+      enableQualityChecks: true,
+      apiKey: deepSeekApiKey // Explicitly pass the API key
     })
   }
 
