@@ -1,4 +1,5 @@
 import { Venue, VenueCategory, DataSource, Coordinates, PriceRange } from '../types/index.js'
+import { GooglePlacesService } from '../api/GooglePlacesService.js'
 
 /**
  * Hierarchical fallback system for recommendation generation
@@ -15,12 +16,15 @@ export class FallbackManager {
 
     this.fallbackLevels = [
       { name: 'Curated Database', handler: this.curatedDatabaseFallback.bind(this) },
-      { name: 'Google Places Only', handler: this.googlePlacesFallback.bind(this) },
+      { name: 'Google Places API', handler: this.googlePlacesFallback.bind(this) },
       { name: 'Generic Activities', handler: this.genericActivitiesFallback.bind(this) }
     ]
 
     this.destinationDatabase = this.initializeDestinationDatabase()
     this.genericActivities = this.initializeGenericActivities()
+    
+    // Initialize real Google Places service
+    this.googlePlacesService = new GooglePlacesService()
   }
 
   /**
@@ -83,39 +87,34 @@ export class FallbackManager {
   }
 
   /**
-   * Level 1: Google Places only fallback
+   * Level 2: Google Places API fallback (REAL API)
    */
   async googlePlacesFallback(tripData) {
     if (!this.options.enableGooglePlaces) {
       throw new Error('Google Places fallback disabled')
     }
 
-    console.log(`🌐 FallbackManager: Searching Google Places for ${tripData.destination}`)
+    console.log(`🌐 FallbackManager: Using REAL Google Places API for ${tripData.destination}`)
     
-    const venues = []
-    const categories = tripData.categories || ['culture', 'dining', 'attraction']
-    
-    // Generate search queries based on destination and preferences
-    const searchQueries = this.generateGooglePlacesQueries(tripData.destination, categories)
-    
-    for (const query of searchQueries) {
-      try {
-        const placeVenues = await this.searchGooglePlaces(query, tripData.destination)
-        venues.push(...placeVenues)
-        
-        if (venues.length >= this.options.maxFallbackVenues) {
-          break
-        }
-      } catch (error) {
-        console.warn(`⚠️ FallbackManager: Google Places query failed for "${query}":`, error)
-      }
+    try {
+      // Use the real Google Places service
+      const venues = await this.googlePlacesService.searchVenues(
+        tripData.destination,
+        tripData.categories || ['culture', 'dining', 'attraction'],
+        tripData.preferences || []
+      )
+      
+      console.log(`✅ FallbackManager: Google Places API returned ${venues.length} real venues`)
+      return venues.slice(0, this.options.maxFallbackVenues)
+      
+    } catch (error) {
+      console.warn(`⚠️ FallbackManager: Google Places API failed:`, error)
+      throw error
     }
-
-    return this.deduplicateVenues(venues).slice(0, this.options.maxFallbackVenues)
   }
 
   /**
-   * Level 2: Curated destination database fallback
+   * Level 1: Curated destination database fallback
    */
   async curatedDatabaseFallback(tripData) {
     if (!this.options.enableCuratedDatabase) {

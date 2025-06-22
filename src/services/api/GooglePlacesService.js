@@ -9,13 +9,15 @@ export class GooglePlacesService {
   constructor(options = {}) {
     // Browser-compatible environment variable access
     const getApiKey = () => {
+      // Try Node.js environment variables first (server/testing)
+      if (typeof process !== 'undefined' && process.env) {
+        return process.env.GOOGLE_PLACES_API_KEY || 
+               process.env.VITE_GOOGLE_MAPS_API_KEY ||
+               process.env.VITE_GOOGLE_PLACES_API_KEY
+      }
       // Try Vite environment variables (browser)
       if (typeof import.meta !== 'undefined' && import.meta.env) {
-        return import.meta.env.VITE_GOOGLE_PLACES_API_KEY
-      }
-      // Try Node.js environment variables (server/testing)
-      if (typeof process !== 'undefined' && process.env) {
-        return process.env.GOOGLE_PLACES_API_KEY
+        return import.meta.env.VITE_GOOGLE_PLACES_API_KEY || import.meta.env.VITE_GOOGLE_MAPS_API_KEY
       }
       // Fallback to options
       return options.apiKey
@@ -36,6 +38,7 @@ export class GooglePlacesService {
     this.rateLimitDelayMs = 100 // ms between requests
     
     console.log('🌐 GooglePlacesService: Real API integration initialized')
+    console.log(`🔑 GooglePlacesService: API Key configured: ${this.options.apiKey ? 'YES' : 'NO'}`)
   }
 
   /**

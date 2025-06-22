@@ -1,4 +1,8 @@
+import dotenv from 'dotenv'
 import NewRecommendationEngine from './src/services/recommendations/NewRecommendationEngine.js'
+
+// Load environment variables
+dotenv.config()
 
 /**
  * Test script for the new recommendation engine

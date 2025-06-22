@@ -196,21 +196,21 @@ export class VenueAnalyzer {
   async extractQualitySignals(venue, context) {
     const signals = new QualitySignals()
 
-    // Popularity signals
-    signals.mentionFrequency = this.calculateMentionFrequency(venue, context)
-    signals.socialProof = this.analyzeSocialProofSignals(venue)
+    // Standard quality signals expected by QualitySignals class
+    signals.mentionFrequency = this.calculateMentionFrequency(venue, context) * 10 // Scale to 0-10
+    signals.sentimentScore = this.analyzeSocialProofSignals(venue) // 0-1 scale
+    signals.hasRealLocation = venue.location && venue.location.isValid && venue.location.isValid()
+    signals.hasValidBusinessInfo = this.assessBusinessLegitimacy(venue) > 0.5
+    signals.passesNameValidation = this.validateBusinessNaming(venue.name)
+    signals.crossSourceVerified = venue.sources && venue.sources.length > 1
+    signals.hasUserRatings = venue.rating && venue.rating > 0
+    signals.hasRecentActivity = this.assessOperationalStatus(venue) > 0.5
     
-    // Quality indicators
-    signals.reviewQuality = this.analyzeReviewQuality(venue)
-    signals.contentRichness = this.analyzeContentRichness(venue)
-    
-    // Location signals
-    signals.locationRelevance = this.analyzeLocationRelevance(venue, context)
-    signals.accessibilityScore = this.calculateAccessibilityScore(venue)
-    
-    // Business signals
-    signals.businessLegitimacy = this.assessBusinessLegitimacy(venue)
-    signals.operationalStatus = this.assessOperationalStatus(venue)
+    // Add custom signals using the signals Map
+    signals.addSignal('reviewQuality', this.analyzeReviewQuality(venue), 0.1)
+    signals.addSignal('contentRichness', this.analyzeContentRichness(venue), 0.1)
+    signals.addSignal('locationRelevance', this.analyzeLocationRelevance(venue, context), 0.15)
+    signals.addSignal('accessibilityScore', this.calculateAccessibilityScore(venue), 0.05)
 
     return signals
   }
@@ -227,10 +227,10 @@ export class VenueAnalyzer {
     }
 
     let confidence = 0
-    confidence += analysis.semanticAnalysis.nameQuality * weights.semanticAnalysis
-    confidence += analysis.businessValidation.confidence * weights.businessValidation
-    confidence += analysis.categoryPrediction.confidence * weights.categoryPrediction
-    confidence += analysis.qualitySignals.overallScore * weights.qualitySignals
+    confidence += (analysis.semanticAnalysis.nameQuality || 0) * weights.semanticAnalysis
+    confidence += (analysis.businessValidation.confidence || 0) * weights.businessValidation
+    confidence += (analysis.categoryPrediction.confidence || 0) * weights.categoryPrediction
+    confidence += (analysis.qualitySignals.calculateOverallScore() / 100) * weights.qualitySignals
 
     return Math.min(1.0, Math.max(0.0, confidence))
   }
@@ -245,7 +245,7 @@ export class VenueAnalyzer {
     let bonus = 0
     if (analysis.businessValidation.isLegitimateEntity) bonus += 10
     if (analysis.semanticAnalysis.contextRelevance > 0.8) bonus += 5
-    if (analysis.qualitySignals.socialProof > 0.7) bonus += 5
+    if (analysis.qualitySignals.sentimentScore > 0.7) bonus += 5
 
     return Math.min(100, baseScore + bonus)
   }
@@ -263,7 +263,7 @@ export class VenueAnalyzer {
         if (b.confidence !== a.confidence) return b.confidence - a.confidence
         
         // Tertiary: Quality Signals
-        return b.qualitySignals.overallScore - a.qualitySignals.overallScore
+        return b.qualitySignals.calculateOverallScore() - a.qualitySignals.calculateOverallScore()
       })
       .map((analysis, index) => ({
         ...analysis,
