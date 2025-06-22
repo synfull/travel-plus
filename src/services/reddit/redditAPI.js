@@ -197,7 +197,28 @@ class RedditAPI {
           `${destination} cultural experiences reddit`,
           `${destination} temples churches reddit`,
           `${destination} local culture reddit`,
-          `${destination} cultural attractions reddit`
+          `${destination} cultural attractions reddit`,
+          `best temples ${destination} reddit`,
+          `${destination} palace recommendations reddit`,
+          `${destination} traditional sites reddit`,
+          `${destination} heritage sites reddit`,
+          `${destination} ancient sites reddit`,
+          `${destination} religious sites reddit`,
+          `${destination} historic buildings reddit`,
+          `${destination} cultural landmarks reddit`,
+          `${destination} traditional architecture reddit`,
+          `${destination} sacred sites reddit`,
+          `${destination} monastery temple reddit`,
+          `${destination} cultural villages reddit`,
+          `${destination} art museums reddit`,
+          `${destination} history museums reddit`,
+          `${destination} archaeological sites reddit`,
+          `must visit temples ${destination} reddit`,
+          `famous temples ${destination} reddit`,
+          `${destination} royal palace reddit`,
+          `${destination} traditional markets reddit`,
+          `${destination} cultural districts reddit`,
+          `${destination} old town reddit`
         )
         break
         

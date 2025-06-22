@@ -49,7 +49,7 @@ export function useGenerateItinerary() {
       
       // Add a small delay to ensure cache is properly set before navigation
       setTimeout(() => {
-        navigate(`/itinerary/${itinerary.id}`)
+      navigate(`/itinerary/${itinerary.id}`)
       }, 100)
     },
     onError: (error) => {

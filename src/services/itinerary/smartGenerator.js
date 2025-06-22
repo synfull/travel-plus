@@ -1,4 +1,5 @@
 import recommendationEngine from '../reddit/recommendationEngine.js'
+import NewRecommendationEngine from '../recommendations/NewRecommendationEngine.js'
 
 class SmartItineraryGenerator {
   constructor() {
@@ -18,43 +19,132 @@ class SmartItineraryGenerator {
       'Bangkok': { lat: 13.7563, lng: 100.5018 },
       'Sydney': { lat: -33.8688, lng: 151.2093 }
     }
+    
+    // Initialize the new recommendation engine
+    this.newRecommendationEngine = new NewRecommendationEngine({
+      qualityThreshold: 50,
+      maxRecommendations: 30,
+      enableRedditProcessing: true,
+      enableEnrichment: true,
+      cacheEnabled: true,
+      fallbackEnabled: true
+    })
+    
+    // Feature flag to control which engine to use
+    this.useNewEngine = true // Set to true to test the new engine
   }
 
   async generateSmartItinerary(tripData) {
     console.log('🧠 Generating smart itinerary with Reddit research for:', tripData.destination)
     
     try {
-      // Step 1: Get Reddit-based recommendations
-      const recommendations = await recommendationEngine.generateRecommendations(tripData)
-      console.log(`📊 Received ${recommendations.length} Reddit recommendations`)
+      let recommendations = []
       
-      // Step 2: Organize recommendations by category and time
-      const organizedRecommendations = this.organizeRecommendations(recommendations)
-      console.log('🎯 Organized recommendations by time slot:', organizedRecommendations)
+      // Choose which recommendation engine to use
+      if (this.useNewEngine) {
+        console.log('🆕 Using new recommendation engine')
+        const result = await this.newRecommendationEngine.generateRecommendations(tripData)
+        
+        if (result.success && result.data.length > 0) {
+          console.log(`✅ New engine generated ${result.data.length} recommendations`)
+          recommendations = this.convertNewRecommendationsToOldFormat(result.data)
+        } else {
+          console.warn('⚠️ New engine failed, falling back to old engine')
+          recommendations = await this.generateRecommendationsOldWay(tripData)
+        }
+      } else {
+        console.log('📜 Using legacy recommendation engine')
+        recommendations = await this.generateRecommendationsOldWay(tripData)
+      }
       
-      // Debug: Show what we have for each time slot
-      console.log('📊 Morning recommendations:', Object.keys(organizedRecommendations.morning).map(cat => 
-        `${cat}: ${organizedRecommendations.morning[cat].length}`
-      ))
-      console.log('📊 Afternoon recommendations:', Object.keys(organizedRecommendations.afternoon).map(cat => 
-        `${cat}: ${organizedRecommendations.afternoon[cat].length}`
-      ))
-      console.log('📊 Evening recommendations:', Object.keys(organizedRecommendations.evening).map(cat => 
-        `${cat}: ${organizedRecommendations.evening[cat].length}`
-      ))
+      if (recommendations.length === 0) {
+        console.warn('⚠️ No recommendations generated, using fallback')
+        return this.generateBasicItinerary(tripData)
+      }
       
-      // Step 3: Generate daily itinerary using real recommendations
-      const days = this.calculateDays(tripData.startDate, tripData.endDate)
-      const itinerary = this.buildItinerary(tripData, organizedRecommendations, days)
+      console.log(`📊 Generated ${recommendations.length} recommendations for itinerary building`)
       
-      console.log('✅ Smart itinerary generated successfully')
+      // Build itinerary using existing logic
+      const numDays = this.calculateDays(tripData.startDate, tripData.endDate)
+      const itinerary = this.buildItinerary(tripData, recommendations, numDays)
+      
       return itinerary
       
     } catch (error) {
       console.error('❌ Smart itinerary generation failed:', error)
-      // Fall back to basic generation if Reddit research fails
       return this.generateBasicItinerary(tripData)
     }
+  }
+
+  /**
+   * Convert new recommendation format to old format for compatibility
+   */
+  convertNewRecommendationsToOldFormat(newRecommendations) {
+    return newRecommendations.map(recommendation => {
+      const venue = recommendation.venue
+      
+      return {
+        name: venue.name,
+        category: venue.category,
+        description: venue.description || venue.shortDescription || 'Popular venue',
+        shortDescription: venue.shortDescription || venue.description || 'Popular venue',
+        whyRecommended: recommendation.reasons.join('. ') || 'Recommended by travelers',
+        avgPrice: venue.priceRange?.min || this.getDefaultPrice(venue.category),
+        confidence: venue.confidenceScore,
+        avgSentiment: venue.qualitySignals.sentimentScore || 0.5,
+        enrichedData: venue.enrichmentData || {},
+        sources: venue.sources.map(s => s.type),
+        coordinates: venue.location ? {
+          lat: venue.location.lat,
+          lng: venue.location.lng
+        } : null,
+        timeSlots: recommendation.timeSlots || [],
+        tags: recommendation.tags || [],
+        metadata: {
+          newEngineGenerated: true,
+          qualityScore: venue.confidenceScore,
+          mentionFrequency: venue.qualitySignals.mentionFrequency,
+          hasRealLocation: venue.qualitySignals.hasRealLocation
+        }
+      }
+    })
+  }
+
+  /**
+   * Legacy recommendation generation (existing logic)
+   */
+  async generateRecommendationsOldWay(tripData) {
+    // This is the existing logic from the old recommendationEngine
+    const recommendationEngine = await import('../reddit/recommendationEngine.js')
+    const recommendations = await recommendationEngine.default.generateRecommendations(tripData)
+    return recommendations
+  }
+
+  /**
+   * Get metrics from the new engine
+   */
+  getNewEngineMetrics() {
+    if (this.newRecommendationEngine) {
+      return this.newRecommendationEngine.getMetrics()
+    }
+    return null
+  }
+
+  /**
+   * Reset the new engine caches
+   */
+  resetNewEngine() {
+    if (this.newRecommendationEngine) {
+      this.newRecommendationEngine.reset()
+    }
+  }
+
+  /**
+   * Switch between old and new engines
+   */
+  setEngineMode(useNewEngine) {
+    this.useNewEngine = useNewEngine
+    console.log(`🔄 SmartItineraryGenerator: Switched to ${useNewEngine ? 'new' : 'old'} engine`)
   }
 
   organizeRecommendations(recommendations) {
@@ -79,35 +169,76 @@ class SmartItineraryGenerator {
       }
     }
 
-    recommendations.forEach(rec => {
+    console.log(`📝 Organizing ${recommendations.length} recommendations by time slot...`)
+
+    recommendations.forEach((rec, index) => {
+      console.log(`  ${index + 1}. Processing: "${rec.name}" (category: ${rec.category})`)
+      
       // Determine best time of day for this recommendation
       if (rec.category === 'dining') {
         // Restaurants can be lunch or dinner
         if (rec.name.toLowerCase().includes('breakfast') || rec.name.toLowerCase().includes('cafe')) {
           organized.morning.dining = organized.morning.dining || []
           organized.morning.dining.push(rec)
+          console.log(`    → Added to MORNING dining (breakfast/cafe)`)
         } else {
           organized.afternoon[rec.category].push(rec)
           organized.evening[rec.category].push(rec)
+          console.log(`    → Added to AFTERNOON and EVENING dining`)
         }
       } else if (rec.category === 'nightlife') {
         organized.evening[rec.category].push(rec)
+        console.log(`    → Added to EVENING nightlife`)
       } else if (rec.category === 'culture' || rec.category === 'attraction') {
-        // Cultural sites better in morning/afternoon
-        organized.morning[rec.category].push(rec)
-        organized.afternoon[rec.category].push(rec)
+        // Distribute cultural sites across morning/afternoon to avoid duplicates
+        const morningCount = organized.morning[rec.category].length
+        const afternoonCount = organized.afternoon[rec.category].length
+        
+        if (morningCount <= afternoonCount) {
+          organized.morning[rec.category].push(rec)
+          console.log(`    → Added to MORNING ${rec.category} (balance: morning=${morningCount+1}, afternoon=${afternoonCount})`)
+        } else {
+          organized.afternoon[rec.category].push(rec)
+          console.log(`    → Added to AFTERNOON ${rec.category} (balance: morning=${morningCount}, afternoon=${afternoonCount+1})`)
+        }
+        
+        // Also add some culture venues to evening for variety (every 3rd culture venue)
+        if (rec.category === 'culture' && (morningCount + afternoonCount) % 3 === 0) {
+          organized.evening[rec.category] = organized.evening[rec.category] || []
+          organized.evening[rec.category].push(rec)
+          console.log(`    → Also added to EVENING culture for variety`)
+        }
       } else {
         // Default to afternoon
         organized.afternoon[rec.category] = organized.afternoon[rec.category] || []
         organized.afternoon[rec.category].push(rec)
+        console.log(`    → Added to AFTERNOON ${rec.category} (default)`)
       }
     })
+
+    // Log final organization summary
+    console.log(`📊 Final organization summary:`)
+    console.log(`  Morning: culture=${organized.morning.culture.length}, nature=${organized.morning.nature.length}, attraction=${organized.morning.attraction.length}, shopping=${organized.morning.shopping.length}`)
+    console.log(`  Afternoon: dining=${organized.afternoon.dining.length}, culture=${organized.afternoon.culture.length}, nature=${organized.afternoon.nature.length}, attraction=${organized.afternoon.attraction.length}, shopping=${organized.afternoon.shopping.length}`)
+    console.log(`  Evening: dining=${organized.evening.dining.length}, nightlife=${organized.evening.nightlife.length}, culture=${organized.evening.culture.length}`)
 
     return organized
   }
 
   buildItinerary(tripData, recommendations, numDays) {
     const itineraryId = `smart-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
+    
+    // Handle both old organized format and new flat array format
+    let organizedRecommendations
+    if (Array.isArray(recommendations)) {
+      // New format: flat array of recommendations
+      console.log(`🔄 Converting ${recommendations.length} flat recommendations to organized format`)
+      organizedRecommendations = this.organizeRecommendations(recommendations)
+    } else {
+      // Old format: already organized by time slots
+      console.log(`📋 Using pre-organized recommendations`)
+      organizedRecommendations = recommendations
+    }
     
     const days = []
     let usedRecommendations = new Set()
@@ -120,9 +251,9 @@ class SmartItineraryGenerator {
         dayNumber: i + 1,
         date: dayDate.toISOString().split('T')[0],
         title: `Day ${i + 1} in ${tripData.destination}`,
-        morning: this.selectActivity(recommendations.morning, usedRecommendations, 'morning', tripData),
-        afternoon: this.selectActivity(recommendations.afternoon, usedRecommendations, 'afternoon', tripData),
-        evening: this.selectActivity(recommendations.evening, usedRecommendations, 'evening', tripData)
+        morning: this.selectActivity(organizedRecommendations.morning, usedRecommendations, 'morning', tripData),
+        afternoon: this.selectActivity(organizedRecommendations.afternoon, usedRecommendations, 'afternoon', tripData),
+        evening: this.selectActivity(organizedRecommendations.evening, usedRecommendations, 'evening', tripData)
       }
       
       days.push(day)
@@ -142,23 +273,31 @@ class SmartItineraryGenerator {
       budget: tripData.budget,
       days,
       budgetSummary,
-      insiderTips: this.generateInsiderTips(tripData.destination, recommendations),
-      generatedBy: 'reddit-research'
+      insiderTips: this.generateInsiderTips(tripData.destination, organizedRecommendations),
+      generatedBy: this.useNewEngine ? 'new-engine' : 'reddit-research'
     }
   }
 
   selectActivity(timeSlotRecommendations, usedRecommendations, timeOfDay, tripData) {
     console.log(`🎯 Selecting ${timeOfDay} activity from:`, timeSlotRecommendations)
+    console.log(`🔍 Currently used recommendations:`, Array.from(usedRecommendations))
     
     // Find best unused recommendation for this time slot
     for (const category of Object.keys(timeSlotRecommendations)) {
       const categoryRecs = timeSlotRecommendations[category]
       console.log(`  📂 ${category}: ${categoryRecs.length} recommendations`)
       
+      // Log all recommendations in this category for debugging
+      categoryRecs.forEach((rec, index) => {
+        const isUsed = usedRecommendations.has(rec.name)
+        console.log(`    ${index + 1}. "${rec.name}" - ${isUsed ? '❌ ALREADY USED' : '✅ AVAILABLE'}`)
+      })
+      
       for (const rec of categoryRecs) {
         if (!usedRecommendations.has(rec.name)) {
           usedRecommendations.add(rec.name)
-          console.log(`  ✅ Selected: ${rec.name} (${rec.category})`)
+          console.log(`  ✅ Selected: "${rec.name}" (${rec.category}) for ${timeOfDay}`)
+          console.log(`  🔄 Updated used recommendations:`, Array.from(usedRecommendations))
           
           return {
             time: this.getTimeForSlot(timeOfDay),
@@ -183,11 +322,14 @@ class SmartItineraryGenerator {
             businessStatus: rec.enrichedData?.businessStatus,
             sources: rec.enrichedData?.sources || ['reddit']
           }
+        } else {
+          console.log(`    ⏭️ Skipping "${rec.name}" - already used`)
         }
       }
     }
     
     console.log(`  ⚠️ No unused recommendations found for ${timeOfDay}, using fallback`)
+    console.log(`  📊 Total used recommendations so far:`, usedRecommendations.size)
 
     // Fallback if no recommendations available
     return this.generateFallbackActivity(timeOfDay, tripData.destination)
@@ -268,25 +410,42 @@ class SmartItineraryGenerator {
   }
 
   generateFallbackActivity(timeOfDay, destination) {
-    const fallbackActivities = {
-      morning: {
-        activity: 'Explore Local Attractions',
-        description: `Start your day exploring the highlights of ${destination}`,
-        type: 'sightseeing'
-      },
-      afternoon: {
-        activity: 'Local Cuisine Experience',
-        description: `Enjoy authentic local cuisine at recommended restaurants`,
-        type: 'dining'
-      },
-      evening: {
-        activity: 'Cultural Experience',
-        description: `Immerse yourself in the local culture with evening activities`,
-        type: 'culture'
+    // Generate specific fallback activities based on destination
+    const destinationSpecific = this.getDestinationSpecificFallbacks(destination, timeOfDay)
+    
+    if (destinationSpecific) {
+      return {
+        time: this.getTimeForSlot(timeOfDay),
+        activity: destinationSpecific.activity,
+        description: destinationSpecific.description,
+        estimatedCost: this.getDefaultPrice(destinationSpecific.type),
+        type: destinationSpecific.type,
+        location: this.generateRandomLocation(destination),
+        whyRecommended: 'Popular activity for this destination',
+        sources: ['fallback']
       }
     }
 
-    const fallback = fallbackActivities[timeOfDay] || fallbackActivities.afternoon
+    // Generic fallbacks as last resort
+    const genericFallbacks = {
+      morning: {
+        activity: 'City Walking Tour',
+        description: `Take a self-guided walking tour to discover the highlights of ${destination}`,
+        type: 'sightseeing'
+      },
+      afternoon: {
+        activity: 'Local Market Visit',
+        description: `Explore local markets and try authentic regional specialties`,
+        type: 'dining'
+      },
+      evening: {
+        activity: 'Sunset Viewing',
+        description: `Find a scenic spot to watch the sunset and experience the local atmosphere`,
+        type: 'nature'
+      }
+    }
+
+    const fallback = genericFallbacks[timeOfDay] || genericFallbacks.afternoon
     
     return {
       time: this.getTimeForSlot(timeOfDay),
@@ -295,8 +454,213 @@ class SmartItineraryGenerator {
       estimatedCost: this.getDefaultPrice(fallback.type),
       type: fallback.type,
       location: this.generateRandomLocation(destination),
-      whyRecommended: 'Popular activity type for this destination'
+      whyRecommended: 'Recommended activity type',
+      sources: ['fallback']
     }
+  }
+
+  getDestinationSpecificFallbacks(destination, timeOfDay) {
+    const destLower = destination.toLowerCase()
+    
+    // New York City specific fallbacks
+    if (destLower.includes('new york') || destLower.includes('nyc') || destLower.includes('manhattan') || destLower.includes('brooklyn')) {
+      const fallbacks = {
+        morning: {
+          activity: 'Metropolitan Museum Visit',
+          description: 'Explore one of the world\'s largest and most prestigious art museums with collections spanning 5,000 years',
+          type: 'culture'
+        },
+        afternoon: {
+          activity: 'Central Park Cultural Walk',
+          description: 'Stroll through America\'s most famous urban park and visit cultural landmarks like Bethesda Fountain',
+          type: 'culture'
+        },
+        evening: {
+          activity: 'Broadway District Exploration',
+          description: 'Experience the heart of American theater in Times Square and the Theater District',
+          type: 'culture'
+        }
+      }
+      return fallbacks[timeOfDay]
+    }
+    
+    // Bali, Indonesia specific fallbacks
+    if (destLower.includes('bali') || destLower.includes('indonesia')) {
+      const fallbacks = {
+        morning: {
+          activity: 'Traditional Temple Visit',
+          description: 'Visit ancient Hindu temples like Tanah Lot or Uluwatu and experience Balinese spiritual culture',
+          type: 'culture'
+        },
+        afternoon: {
+          activity: 'Tegallalang Rice Terraces',
+          description: 'Explore the famous stepped rice terraces and learn about traditional Balinese agriculture',
+          type: 'nature'
+        },
+        evening: {
+          activity: 'Ubud Art Market',
+          description: 'Browse traditional crafts, textiles, and artwork in Ubud\'s vibrant cultural center',
+          type: 'shopping'
+        }
+      }
+      return fallbacks[timeOfDay]
+    }
+    
+    // Paris, France specific fallbacks
+    if (destLower.includes('paris') || destLower.includes('france')) {
+      const fallbacks = {
+        morning: {
+          activity: 'Louvre Museum Visit',
+          description: 'Explore world-famous art collections including the Mona Lisa and Venus de Milo',
+          type: 'culture'
+        },
+        afternoon: {
+          activity: 'Seine River Walk',
+          description: 'Stroll along the Seine River and admire iconic Parisian architecture and bridges',
+          type: 'sightseeing'
+        },
+        evening: {
+          activity: 'Montmartre District',
+          description: 'Experience the artistic heart of Paris with street performers and panoramic city views',
+          type: 'culture'
+        }
+      }
+      return fallbacks[timeOfDay]
+    }
+    
+    // Barcelona, Spain specific fallbacks
+    if (destLower.includes('barcelona') || destLower.includes('spain')) {
+      const fallbacks = {
+        morning: {
+          activity: 'Sagrada Familia Visit',
+          description: 'Marvel at Gaudí\'s masterpiece and learn about Barcelona\'s unique architectural heritage',
+          type: 'culture'
+        },
+        afternoon: {
+          activity: 'Gothic Quarter Exploration',
+          description: 'Wander through medieval streets and discover hidden plazas in the historic city center',
+          type: 'culture'
+        },
+        evening: {
+          activity: 'Tapas Tour',
+          description: 'Experience authentic Spanish culture through traditional tapas and local wine',
+          type: 'dining'
+        }
+      }
+      return fallbacks[timeOfDay]
+    }
+    
+    // Tokyo, Japan specific fallbacks
+    if (destLower.includes('tokyo') || destLower.includes('japan')) {
+      const fallbacks = {
+        morning: {
+          activity: 'Traditional Temple Visit',
+          description: 'Visit Senso-ji Temple or Meiji Shrine to experience Japan\'s spiritual traditions',
+          type: 'culture'
+        },
+        afternoon: {
+          activity: 'Traditional Market Tour',
+          description: 'Explore Tsukiji Outer Market or Ameya-Yokocho for authentic Japanese street food',
+          type: 'dining'
+        },
+        evening: {
+          activity: 'Traditional District Walk',
+          description: 'Stroll through Asakusa or Shibuya to experience Tokyo\'s blend of traditional and modern culture',
+          type: 'culture'
+        }
+      }
+      return fallbacks[timeOfDay]
+    }
+    
+    // Thailand specific fallbacks
+    if (destLower.includes('thailand') || destLower.includes('bangkok') || destLower.includes('phuket') || destLower.includes('chiang mai')) {
+      const fallbacks = {
+        morning: {
+          activity: 'Buddhist Temple Visit',
+          description: 'Visit golden temples like Wat Pho or Wat Arun to experience Thai Buddhist culture',
+          type: 'culture'
+        },
+        afternoon: {
+          activity: 'Floating Market Tour',
+          description: 'Experience traditional Thai commerce at colorful floating markets',
+          type: 'culture'
+        },
+        evening: {
+          activity: 'Thai Street Food Tour',
+          description: 'Sample authentic Thai cuisine from local street vendors and night markets',
+          type: 'dining'
+        }
+      }
+      return fallbacks[timeOfDay]
+    }
+    
+    // Italy specific fallbacks
+    if (destLower.includes('italy') || destLower.includes('rome') || destLower.includes('florence') || destLower.includes('venice')) {
+      const fallbacks = {
+        morning: {
+          activity: 'Historical Site Visit',
+          description: 'Explore ancient Roman ruins, Renaissance art, or medieval architecture',
+          type: 'culture'
+        },
+        afternoon: {
+          activity: 'Traditional Piazza Tour',
+          description: 'Visit historic city squares and admire Italian architecture and fountains',
+          type: 'culture'
+        },
+        evening: {
+          activity: 'Italian Cuisine Experience',
+          description: 'Enjoy authentic pasta, pizza, or gelato in a traditional Italian setting',
+          type: 'dining'
+        }
+      }
+      return fallbacks[timeOfDay]
+    }
+    
+    // Cancun/Riviera Maya specific fallbacks
+    if (destLower.includes('cancun') || destLower.includes('riviera maya') || destLower.includes('playa del carmen')) {
+      const fallbacks = {
+        morning: {
+          activity: 'Mayan Ruins Exploration',
+          description: 'Explore ancient Mayan archaeological sites and learn about pre-Columbian history',
+          type: 'culture'
+        },
+        afternoon: {
+          activity: 'Cenote Swimming',
+          description: 'Swim in crystal-clear cenotes (natural sinkholes) unique to the Yucatan Peninsula',
+          type: 'nature'
+        },
+        evening: {
+          activity: 'Mexican Cuisine Tasting',
+          description: 'Sample authentic Yucatecan dishes like cochinita pibil and sopa de lima',
+          type: 'dining'
+        }
+      }
+      return fallbacks[timeOfDay]
+    }
+    
+    // Greece specific fallbacks
+    if (destLower.includes('greece') || destLower.includes('athens') || destLower.includes('santorini') || destLower.includes('mykonos')) {
+      const fallbacks = {
+        morning: {
+          activity: 'Ancient Greek Site Visit',
+          description: 'Explore ancient temples, amphitheaters, or archaeological museums',
+          type: 'culture'
+        },
+        afternoon: {
+          activity: 'Traditional Village Tour',
+          description: 'Wander through whitewashed villages and experience authentic Greek island life',
+          type: 'culture'
+        },
+        evening: {
+          activity: 'Greek Taverna Experience',
+          description: 'Enjoy traditional Greek cuisine with mezze, fresh seafood, and local wine',
+          type: 'dining'
+        }
+      }
+      return fallbacks[timeOfDay]
+    }
+    
+    return null
   }
 
   generateOverview(tripData, days) {
