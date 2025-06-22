@@ -4,17 +4,18 @@ import NewRecommendationEngine from './src/services/recommendations/NewRecommend
  * Test script for the new recommendation engine
  */
 async function testNewEngine() {
-  console.log('🧪 Testing New Recommendation Engine - Phase 1')
+  console.log('🧪 Testing New Recommendation Engine - Phase 3 Discovery')
   console.log('=' .repeat(50))
 
-  // Create engine instance
+  // Create engine instance with Phase 3 enabled
   const engine = new NewRecommendationEngine({
     qualityThreshold: 40,
     maxRecommendations: 20,
     enableRedditProcessing: false, // Disable for testing to avoid API calls
     enableEnrichment: false, // Disable for testing
     cacheEnabled: true,
-    fallbackEnabled: true
+    fallbackEnabled: true,
+    usePhase3Discovery: true // Enable Phase 3 AI-enhanced discovery
   })
 
   // Test data

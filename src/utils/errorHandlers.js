@@ -59,8 +59,11 @@ export function logError(error, context = {}) {
     })
   }
   
-  // Also log to console in development
-  if (process.env.NODE_ENV === 'development') {
+  // Also log to console in development (browser-compatible)
+  const isDevelopment = (typeof import.meta !== 'undefined' && import.meta.env?.DEV) || 
+                       (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development')
+  
+  if (isDevelopment) {
     console.error('Error logged:', error, context)
   }
 }

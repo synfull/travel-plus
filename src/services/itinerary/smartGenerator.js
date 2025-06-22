@@ -20,18 +20,20 @@ class SmartItineraryGenerator {
       'Sydney': { lat: -33.8688, lng: 151.2093 }
     }
     
-    // Initialize the new recommendation engine
+    // Feature flags - set BEFORE initializing engines
+    this.useNewEngine = true // Set to true to test the new engine
+    this.usePhase3Discovery = true // Enable Phase 3 AI-enhanced discovery
+    
+    // Initialize the new recommendation engine with Phase 3 enabled
     this.newRecommendationEngine = new NewRecommendationEngine({
       qualityThreshold: 50,
       maxRecommendations: 30,
       enableRedditProcessing: true,
       enableEnrichment: true,
       cacheEnabled: true,
-      fallbackEnabled: true
+      fallbackEnabled: true,
+      usePhase3Discovery: this.usePhase3Discovery // Now properly references the flag above
     })
-    
-    // Feature flag to control which engine to use
-    this.useNewEngine = true // Set to true to test the new engine
   }
 
   async generateSmartItinerary(tripData) {
@@ -331,8 +333,17 @@ class SmartItineraryGenerator {
     console.log(`  ⚠️ No unused recommendations found for ${timeOfDay}, using fallback`)
     console.log(`  📊 Total used recommendations so far:`, usedRecommendations.size)
 
-    // Fallback if no recommendations available
-    return this.generateFallbackActivity(timeOfDay, tripData.destination)
+    // Fallback if no recommendations available - pass used activities for diversity
+    const usedActivities = Array.from(usedRecommendations)
+    const fallbackActivity = this.generateFallbackActivity(timeOfDay, tripData.destination, usedActivities)
+    
+    // Track the fallback activity to prevent future duplicates
+    if (fallbackActivity) {
+      usedRecommendations.add(fallbackActivity.activity)
+      console.log(`  🔄 Added fallback activity "${fallbackActivity.activity}" to used list`)
+    }
+    
+    return fallbackActivity
   }
 
   generateLocationForVenue(venueName, addresses, coordinates) {
@@ -409,9 +420,9 @@ class SmartItineraryGenerator {
     return defaultPrices[category] || 30
   }
 
-  generateFallbackActivity(timeOfDay, destination) {
-    // Generate specific fallback activities based on destination
-    const destinationSpecific = this.getDestinationSpecificFallbacks(destination, timeOfDay)
+  generateFallbackActivity(timeOfDay, destination, usedActivities = []) {
+    // Generate specific fallback activities based on destination with diversity
+    const destinationSpecific = this.getDestinationSpecificFallbacks(destination, timeOfDay, usedActivities)
     
     if (destinationSpecific) {
       return {
@@ -459,29 +470,29 @@ class SmartItineraryGenerator {
     }
   }
 
-  getDestinationSpecificFallbacks(destination, timeOfDay) {
+  getDestinationSpecificFallbacks(destination, timeOfDay, usedActivities = []) {
     const destLower = destination.toLowerCase()
     
-    // New York City specific fallbacks
+    // New York City specific fallbacks with diversity
     if (destLower.includes('new york') || destLower.includes('nyc') || destLower.includes('manhattan') || destLower.includes('brooklyn')) {
-      const fallbacks = {
-        morning: {
-          activity: 'Metropolitan Museum Visit',
-          description: 'Explore one of the world\'s largest and most prestigious art museums with collections spanning 5,000 years',
-          type: 'culture'
-        },
-        afternoon: {
-          activity: 'Central Park Cultural Walk',
-          description: 'Stroll through America\'s most famous urban park and visit cultural landmarks like Bethesda Fountain',
-          type: 'culture'
-        },
-        evening: {
-          activity: 'Broadway District Exploration',
-          description: 'Experience the heart of American theater in Times Square and the Theater District',
-          type: 'culture'
-        }
+      const fallbackOptions = {
+        morning: [
+          { activity: 'Metropolitan Museum Visit', description: 'Explore one of the world\'s largest and most prestigious art museums with collections spanning 5,000 years', type: 'culture' },
+          { activity: 'Brooklyn Bridge Walk', description: 'Walk across the iconic Brooklyn Bridge for spectacular views of Manhattan skyline', type: 'sightseeing' },
+          { activity: 'High Line Park Stroll', description: 'Explore this unique elevated park built on former railway tracks with art installations', type: 'nature' }
+        ],
+        afternoon: [
+          { activity: 'Central Park Cultural Walk', description: 'Stroll through America\'s most famous urban park and visit cultural landmarks like Bethesda Fountain', type: 'culture' },
+          { activity: 'Chelsea Market Food Tour', description: 'Sample diverse cuisines and artisanal foods in this historic market hall', type: 'dining' },
+          { activity: 'SoHo Art Gallery Tour', description: 'Discover contemporary art galleries and boutique shops in trendy SoHo district', type: 'culture' }
+        ],
+        evening: [
+          { activity: 'Broadway District Exploration', description: 'Experience the heart of American theater in Times Square and the Theater District', type: 'culture' },
+          { activity: 'Top of the Rock Sunset', description: 'Watch the sunset from Rockefeller Center\'s observation deck with panoramic city views', type: 'sightseeing' },
+          { activity: 'Little Italy Dining Experience', description: 'Enjoy authentic Italian-American cuisine in the historic Little Italy neighborhood', type: 'dining' }
+        ]
       }
-      return fallbacks[timeOfDay]
+      return this.selectUnusedFallback(fallbackOptions[timeOfDay], usedActivities)
     }
     
     // Bali, Indonesia specific fallbacks
@@ -506,26 +517,26 @@ class SmartItineraryGenerator {
       return fallbacks[timeOfDay]
     }
     
-    // Paris, France specific fallbacks
+    // Paris, France specific fallbacks with diversity
     if (destLower.includes('paris') || destLower.includes('france')) {
-      const fallbacks = {
-        morning: {
-          activity: 'Louvre Museum Visit',
-          description: 'Explore world-famous art collections including the Mona Lisa and Venus de Milo',
-          type: 'culture'
-        },
-        afternoon: {
-          activity: 'Seine River Walk',
-          description: 'Stroll along the Seine River and admire iconic Parisian architecture and bridges',
-          type: 'sightseeing'
-        },
-        evening: {
-          activity: 'Montmartre District',
-          description: 'Experience the artistic heart of Paris with street performers and panoramic city views',
-          type: 'culture'
-        }
+      const fallbackOptions = {
+        morning: [
+          { activity: 'Louvre Museum Visit', description: 'Explore world-famous art collections including the Mona Lisa and Venus de Milo', type: 'culture' },
+          { activity: 'Notre-Dame Cathedral Area', description: 'Visit the historic cathedral area and explore Île de la Cité with its medieval charm', type: 'culture' },
+          { activity: 'Champs-Élysées Stroll', description: 'Walk down the famous avenue from Arc de Triomphe to Place de la Concorde', type: 'sightseeing' }
+        ],
+        afternoon: [
+          { activity: 'Seine River Walk', description: 'Stroll along the Seine River and admire iconic Parisian architecture and bridges', type: 'sightseeing' },
+          { activity: 'Latin Quarter Exploration', description: 'Discover narrow medieval streets, bookshops, and cafés in this historic student district', type: 'culture' },
+          { activity: 'Tuileries Garden Visit', description: 'Relax in these beautiful formal gardens between the Louvre and Place de la Concorde', type: 'nature' }
+        ],
+        evening: [
+          { activity: 'Montmartre District', description: 'Experience the artistic heart of Paris with street performers and panoramic city views', type: 'culture' },
+          { activity: 'Marais District Dining', description: 'Explore trendy restaurants and historic Jewish quarter in Le Marais', type: 'dining' },
+          { activity: 'Seine Evening Cruise', description: 'See illuminated Paris landmarks from the water during a romantic evening cruise', type: 'sightseeing' }
+        ]
       }
-      return fallbacks[timeOfDay]
+      return this.selectUnusedFallback(fallbackOptions[timeOfDay], usedActivities)
     }
     
     // Barcelona, Spain specific fallbacks
@@ -661,6 +672,25 @@ class SmartItineraryGenerator {
     }
     
     return null
+  }
+
+  /**
+   * Select an unused fallback activity from available options
+   */
+  selectUnusedFallback(fallbackOptions, usedActivities) {
+    if (!fallbackOptions || fallbackOptions.length === 0) {
+      return null
+    }
+
+    // Find unused activities
+    const unusedFallbacks = fallbackOptions.filter(option => 
+      !usedActivities.includes(option.activity)
+    )
+
+    // If all activities are used, return the first one (better than nothing)
+    const selectedFallback = unusedFallbacks.length > 0 ? unusedFallbacks[0] : fallbackOptions[0]
+    
+    return selectedFallback
   }
 
   generateOverview(tripData, days) {

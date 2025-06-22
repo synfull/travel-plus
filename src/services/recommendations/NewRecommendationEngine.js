@@ -1,6 +1,7 @@
 import { PipelineBuilder } from '../pipeline/RecommendationPipeline.js'
 import { QualityController, QualityCheckers } from '../quality/QualityController.js'
 import FallbackManager from '../fallback/FallbackManager.js'
+import { VenueDiscoveryEngine } from '../discovery/VenueDiscoveryEngine.js'
 import { 
   Venue, 
   VenueCategory, 
@@ -29,6 +30,7 @@ export class NewRecommendationEngine {
       maxRecommendations: options.maxRecommendations || 30,
       cacheEnabled: options.cacheEnabled !== false,
       fallbackEnabled: options.fallbackEnabled !== false,
+      usePhase3Discovery: options.usePhase3Discovery || false, // New Phase 3 flag
       ...options
     }
 
@@ -41,12 +43,21 @@ export class NewRecommendationEngine {
       maxFallbackVenues: this.options.maxRecommendations
     })
 
+    // Phase 3: Initialize new discovery engine
+    if (this.options.usePhase3Discovery) {
+      this.discoveryEngine = new VenueDiscoveryEngine({
+        finalVenueLimit: this.options.maxRecommendations,
+        confidenceThreshold: this.options.qualityThreshold / 100
+      })
+      console.log('🎯 NewRecommendationEngine: Phase 3 Discovery Engine enabled')
+    }
+
     this.pipeline = this.createPipeline()
     this.cache = new Map()
   }
 
   /**
-   * Generate recommendations using the new pipeline architecture
+   * Generate recommendations using Phase 3 discovery or pipeline architecture
    */
   async generateRecommendations(tripData) {
     console.log(`🚀 NewRecommendationEngine: Starting recommendation generation for ${tripData.destination}`)
@@ -59,28 +70,13 @@ export class NewRecommendationEngine {
         return this.cache.get(cacheKey)
       }
 
-      // Execute the pipeline
-      const pipelineResult = await this.pipeline.execute(tripData)
-
-      if (pipelineResult.success && pipelineResult.data.length > 0) {
-        console.log(`✅ NewRecommendationEngine: Pipeline successful - ${pipelineResult.data.length} recommendations`)
-        
-        // Cache the results
-        if (this.options.cacheEnabled) {
-          this.cache.set(cacheKey, pipelineResult)
-        }
-
-        return pipelineResult
-
-      } else {
-        console.warn(`⚠️ NewRecommendationEngine: Pipeline failed or returned no results`)
-        
-        if (this.options.fallbackEnabled) {
-          return await this.executeFallback(tripData, pipelineResult.metadata?.failedAt || 'pipeline')
-        } else {
-          throw new Error('Pipeline failed and fallback disabled')
-        }
+      // Phase 3: Use new discovery engine if enabled
+      if (this.options.usePhase3Discovery && this.discoveryEngine) {
+        return await this.generateWithPhase3Discovery(tripData, cacheKey)
       }
+
+      // Phase 2: Use pipeline architecture (existing system)
+      return await this.generateWithPipeline(tripData, cacheKey)
 
     } catch (error) {
       console.error(`❌ NewRecommendationEngine: Generation failed:`, error)
@@ -89,6 +85,95 @@ export class NewRecommendationEngine {
         return await this.executeFallback(tripData, 'error')
       } else {
         throw error
+      }
+    }
+  }
+
+  /**
+   * Phase 3: Generate recommendations using new discovery engine
+   */
+  async generateWithPhase3Discovery(tripData, cacheKey) {
+    console.log(`🎯 NewRecommendationEngine: Using Phase 3 Discovery Engine`)
+    
+    try {
+      const discoveryResult = await this.discoveryEngine.discoverVenues(tripData)
+      
+      if (discoveryResult.venues.length > 0) {
+        // Convert venues to recommendations
+        const recommendations = discoveryResult.venues.map((venue, index) => 
+          new Recommendation(venue, {
+            score: venue.popularity || 75,
+            reasons: [`AI-discovered venue from ${venue.source || 'multiple sources'}`],
+            tags: ['ai-discovery', 'phase3'],
+            rank: index + 1
+          })
+        )
+
+        const result = {
+          success: true,
+          data: recommendations,
+          metadata: {
+            source: 'phase3_discovery',
+            engine: 'VenueDiscoveryEngine',
+            ...discoveryResult.metadata
+          }
+        }
+
+        // Cache the results
+        if (this.options.cacheEnabled) {
+          this.cache.set(cacheKey, result)
+        }
+
+        console.log(`✅ NewRecommendationEngine: Phase 3 Discovery successful - ${recommendations.length} recommendations`)
+        return result
+
+      } else {
+        console.warn(`⚠️ NewRecommendationEngine: Phase 3 Discovery returned no venues`)
+        
+        if (this.options.fallbackEnabled) {
+          return await this.executeFallback(tripData, 'phase3_discovery')
+        } else {
+          throw new Error('Phase 3 Discovery failed and fallback disabled')
+        }
+      }
+
+    } catch (error) {
+      console.error(`❌ NewRecommendationEngine: Phase 3 Discovery failed:`, error)
+      
+      if (this.options.fallbackEnabled) {
+        return await this.executeFallback(tripData, 'phase3_discovery')
+      } else {
+        throw error
+      }
+    }
+  }
+
+  /**
+   * Phase 2: Generate recommendations using pipeline architecture (existing)
+   */
+  async generateWithPipeline(tripData, cacheKey) {
+    console.log(`🔄 NewRecommendationEngine: Using Phase 2 Pipeline Architecture`)
+    
+    // Execute the pipeline
+    const pipelineResult = await this.pipeline.execute(tripData)
+
+    if (pipelineResult.success && pipelineResult.data.length > 0) {
+      console.log(`✅ NewRecommendationEngine: Pipeline successful - ${pipelineResult.data.length} recommendations`)
+      
+      // Cache the results
+      if (this.options.cacheEnabled) {
+        this.cache.set(cacheKey, pipelineResult)
+      }
+
+      return pipelineResult
+
+    } else {
+      console.warn(`⚠️ NewRecommendationEngine: Pipeline failed or returned no results`)
+      
+      if (this.options.fallbackEnabled) {
+        return await this.executeFallback(tripData, pipelineResult.metadata?.failedAt || 'pipeline')
+      } else {
+        throw new Error('Pipeline failed and fallback disabled')
       }
     }
   }
