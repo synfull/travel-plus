@@ -1,5 +1,6 @@
 import recommendationEngine from '../reddit/recommendationEngine.js'
 import NewRecommendationEngine from '../recommendations/NewRecommendationEngine.js'
+import { DeepSeekEnhancer } from '../ai/DeepSeekEnhancer.js'
 
 class SmartItineraryGenerator {
   constructor() {
@@ -24,6 +25,11 @@ class SmartItineraryGenerator {
     this.useNewEngine = true // Set to true to test the new engine
     this.usePhase3Discovery = true // Enable Phase 3 AI-enhanced discovery
     
+    // Phase 3.5A: DeepSeek Enhancement Flags (SAFETY FIRST)
+    this.enableDeepSeekEnhancement = false // Start disabled for safety
+    this.deepSeekEnhancementMode = 'descriptions_only' // Conservative mode
+    this.deepSeekFallbackOnly = true // Only use when Google Places succeeds
+    
     // Initialize the new recommendation engine with Phase 3 enabled
     this.newRecommendationEngine = new NewRecommendationEngine({
       qualityThreshold: 50,
@@ -33,6 +39,15 @@ class SmartItineraryGenerator {
       cacheEnabled: true,
       fallbackEnabled: true,
       usePhase3Discovery: this.usePhase3Discovery // Now properly references the flag above
+    })
+    
+    // Phase 3.5A: Initialize DeepSeek enhancer (DISABLED by default)
+    this.deepSeekEnhancer = new DeepSeekEnhancer({
+      enabled: this.enableDeepSeekEnhancement,
+      enhancementMode: this.deepSeekEnhancementMode,
+      maxRetries: 2,
+      timeoutMs: 15000, // Conservative timeout
+      enableQualityChecks: true
     })
   }
 
@@ -65,6 +80,35 @@ class SmartItineraryGenerator {
       }
       
       console.log(`📊 Generated ${recommendations.length} recommendations for itinerary building`)
+      
+      // Phase 3.5A: SAFE DeepSeek Enhancement (only if enabled and recommendations exist)
+      if (this.enableDeepSeekEnhancement && recommendations.length > 0) {
+        console.log('🤖 Phase 3.5A: Applying DeepSeek enhancements...')
+        try {
+          const enhancedRecommendations = await this.deepSeekEnhancer.enhanceVenues(
+            recommendations, 
+            {
+              destination: tripData.destination,
+              preferences: tripData.categories,
+              categories: tripData.categories,
+              duration: this.calculateDays(tripData.startDate, tripData.endDate)
+            }
+          )
+          
+          // Safety check: Only use enhanced if same count (critical safety measure)
+          if (enhancedRecommendations.length === recommendations.length) {
+            console.log(`✅ DeepSeek enhancement successful: ${enhancedRecommendations.length} venues enhanced`)
+            recommendations = enhancedRecommendations
+          } else {
+            console.warn(`⚠️ DeepSeek enhancement count mismatch (${enhancedRecommendations.length} vs ${recommendations.length}), using original`)
+          }
+        } catch (error) {
+          console.error('❌ DeepSeek enhancement failed, using original recommendations:', error.message)
+          // recommendations stays unchanged (safe fallback)
+        }
+      } else if (this.enableDeepSeekEnhancement) {
+        console.log('🤖 DeepSeek enhancement enabled but no recommendations to enhance')
+      }
       
       // Build itinerary using existing logic
       const numDays = this.calculateDays(tripData.startDate, tripData.endDate)
@@ -147,6 +191,45 @@ class SmartItineraryGenerator {
   setEngineMode(useNewEngine) {
     this.useNewEngine = useNewEngine
     console.log(`🔄 SmartItineraryGenerator: Switched to ${useNewEngine ? 'new' : 'old'} engine`)
+  }
+
+  /**
+   * Phase 3.5A: Enable/disable DeepSeek enhancement (SAFETY CONTROL)
+   */
+  enableDeepSeekEnhancements(enabled = true) {
+    this.enableDeepSeekEnhancement = enabled
+    this.deepSeekEnhancer.setEnabled(enabled)
+    console.log(`🤖 SmartItineraryGenerator: DeepSeek enhancement ${enabled ? 'ENABLED' : 'DISABLED'}`)
+  }
+
+  /**
+   * Phase 3.5A: Change DeepSeek enhancement mode
+   */
+  setDeepSeekMode(mode) {
+    const validModes = ['descriptions_only', 'venue_insights', 'full_narrative']
+    if (validModes.includes(mode)) {
+      this.deepSeekEnhancementMode = mode
+      this.deepSeekEnhancer.setMode(mode)
+      console.log(`🤖 SmartItineraryGenerator: DeepSeek mode set to ${mode}`)
+    } else {
+      console.warn(`⚠️ SmartItineraryGenerator: Invalid DeepSeek mode ${mode}`)
+    }
+  }
+
+  /**
+   * Phase 3.5A: Get DeepSeek enhancement metrics
+   */
+  getDeepSeekMetrics() {
+    return this.deepSeekEnhancer.getMetrics()
+  }
+
+  /**
+   * Phase 3.5A: Emergency disable DeepSeek (if issues detected)
+   */
+  emergencyDisableDeepSeek() {
+    this.enableDeepSeekEnhancement = false
+    this.deepSeekEnhancer.setEnabled(false)
+    console.warn('🚨 SmartItineraryGenerator: DeepSeek enhancement EMERGENCY DISABLED')
   }
 
   organizeRecommendations(recommendations) {
