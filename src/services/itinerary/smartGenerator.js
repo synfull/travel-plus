@@ -1,6 +1,7 @@
 import recommendationEngine from '../reddit/recommendationEngine.js'
 import NewRecommendationEngine from '../recommendations/NewRecommendationEngine.js'
 import { DeepSeekEnhancer } from '../ai/DeepSeekEnhancer.js'
+import { API_CONFIG } from '../api/config.js'
 
 class SmartItineraryGenerator {
   constructor() {
@@ -111,10 +112,26 @@ class SmartItineraryGenerator {
       } else if (this.enableDeepSeekEnhancement) {
         console.log('🤖 DeepSeek enhancement enabled but no recommendations to enhance')
       }
+
+      // NEW: Search for flights and hotels in parallel with activities
+      console.log('🔍 Searching for flights and hotels...')
+      const [flights, hotels] = await Promise.all([
+        this.searchFlights(tripData),
+        this.searchHotels(tripData)
+      ])
       
       // Build itinerary using existing logic
       const numDays = this.calculateDays(tripData.startDate, tripData.endDate)
       const itinerary = this.buildItinerary(tripData, recommendations, numDays)
+      
+      // Add flights and hotels to the itinerary
+      if (flights) {
+        itinerary.flights = flights
+      }
+      
+      if (hotels && hotels.length > 0) {
+        itinerary.hotels = hotels
+      }
       
       return itinerary
       
@@ -854,6 +871,160 @@ class SmartItineraryGenerator {
       budgetSummary: { total: tripData.budget },
       insiderTips: ['Basic itinerary - Reddit research unavailable'],
       generatedBy: 'basic-fallback'
+    }
+  }
+
+  /**
+   * Search for flights using the same logic as the main API
+   */
+  async searchFlights(tripData) {
+    try {
+      console.log('✈️ Smart Generator: Searching for flights...')
+      
+      // Use the functions URL from API config
+      const functionsUrl = API_CONFIG.FUNCTIONS_URL
+      const response = await fetch(`${functionsUrl}/search-flights`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          origin: tripData.origin,
+          destination: tripData.destination,
+          startDate: tripData.startDate,
+          endDate: tripData.endDate,
+          passengers: tripData.people
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Flight search failed: ${response.status}`)
+      }
+
+      const flightData = await response.json()
+      
+      if (flightData.success && flightData.flights.length > 0) {
+        console.log('✅ Smart Generator: Found flights')
+        // Return the best flight option (first result)
+        const bestFlight = flightData.flights[0]
+        
+        return {
+          outbound: bestFlight.outbound,
+          return: bestFlight.return,
+          totalPrice: bestFlight.totalPrice,
+          currency: bestFlight.currency,
+          bookingUrl: bestFlight.bookingUrl,
+          source: 'amadeus'
+        }
+      } else {
+        throw new Error('No flights found')
+      }
+      
+    } catch (error) {
+      console.warn('⚠️ Smart Generator: Flight search failed, using fallback:', error.message)
+      
+      // Fallback to mock data
+      return {
+        outbound: {
+          airline: 'American Airlines',
+          flightNumber: 'AA123',
+          departure: `${tripData.startDate}T08:00:00`,
+          arrival: `${tripData.startDate}T12:00:00`,
+          price: 324 * tripData.people,
+        },
+        return: tripData.endDate ? {
+          airline: 'American Airlines',
+          flightNumber: 'AA456',
+          departure: `${tripData.endDate}T16:00:00`,
+          arrival: `${tripData.endDate}T23:00:00`,
+          price: 324 * tripData.people,
+        } : null,
+        totalPrice: 648 * tripData.people,
+        currency: 'USD',
+        source: 'fallback'
+      }
+    }
+  }
+
+  /**
+   * Search for hotels using the same logic as the main API
+   */
+  async searchHotels(tripData) {
+    try {
+      console.log('🏨 Smart Generator: Searching for hotels...')
+      
+      // Use the functions URL from API config
+      const functionsUrl = API_CONFIG.FUNCTIONS_URL
+      const response = await fetch(`${functionsUrl}/search-hotels`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          destination: tripData.destination,
+          checkinDate: tripData.startDate,
+          checkoutDate: tripData.endDate,
+          guests: tripData.people,
+          maxPrice: tripData.budgetPerPerson ? Math.round(tripData.budgetPerPerson * 0.3) : null
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Hotel search failed: ${response.status}`)
+      }
+
+      const hotelData = await response.json()
+      
+      if (hotelData.success && hotelData.hotels.length > 0) {
+        console.log(`✅ Smart Generator: Found ${hotelData.hotels.length} hotels`)
+        // Return processed hotel data
+        return hotelData.hotels.map(hotel => ({
+          name: hotel.name,
+          rating: hotel.rating,
+          price: hotel.pricePerNight,
+          currency: hotel.currency || 'USD',
+          location: hotel.location,
+          address: hotel.address,
+          amenities: hotel.amenities,
+          images: hotel.images,
+          image: hotel.images?.[0] || 'https://via.placeholder.com/400x300',
+          room: hotel.room,
+          policies: hotel.policies,
+          bookingUrl: hotel.bookingUrl,
+          source: 'amadeus'
+        }))
+      } else {
+        throw new Error('No hotels found')
+      }
+      
+    } catch (error) {
+      console.warn('⚠️ Smart Generator: Hotel search failed, using fallback:', error.message)
+      
+      // Fallback to mock data
+      return [
+        {
+          name: 'Beachfront Resort & Spa',
+          rating: 4.5,
+          price: 180,
+          currency: 'USD',
+          location: 'Hotel Zone',
+          amenities: ['Pool', 'Beach Access', 'Free WiFi', 'Breakfast'],
+          images: ['https://via.placeholder.com/400x300'],
+          image: 'https://via.placeholder.com/400x300',
+          source: 'fallback'
+        },
+        {
+          name: 'Downtown Boutique Hotel',
+          rating: 4.3,
+          price: 120,
+          currency: 'USD',
+          location: 'City Center',
+          amenities: ['Rooftop Bar', 'Free WiFi', 'Gym'],
+          images: ['https://via.placeholder.com/400x300'],
+          image: 'https://via.placeholder.com/400x300',
+          source: 'fallback'
+        },
+      ]
     }
   }
 }

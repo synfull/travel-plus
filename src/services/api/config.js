@@ -3,65 +3,121 @@
 export const API_CONFIG = {
     // Netlify Functions endpoint
     FUNCTIONS_URL: (() => {
-      const envUrl = import.meta.env.VITE_API_URL
-      const isDev = import.meta.env.DEV
-      const devUrl = 'http://localhost:8888/.netlify/functions'
-      const prodUrl = '/.netlify/functions'
-      
-      console.log('🔧 API Config Debug:', { envUrl, isDev, devUrl, prodUrl })
-      
-      if (envUrl) {
-        console.log('🔧 Using VITE_API_URL:', envUrl)
-        return envUrl
+      // Check if we're in browser environment
+      if (typeof window !== 'undefined' && typeof import.meta !== 'undefined' && import.meta.env) {
+        const envUrl = import.meta.env.VITE_API_URL
+        const isDev = import.meta.env.DEV
+        const devUrl = 'http://localhost:8888/.netlify/functions'
+        const prodUrl = '/.netlify/functions'
+        
+        console.log('🔧 API Config Debug:', { envUrl, isDev, devUrl, prodUrl })
+        
+        if (envUrl) {
+          console.log('🔧 Using VITE_API_URL:', envUrl)
+          return envUrl
+        }
+        
+        if (isDev) {
+          console.log('🔧 Using dev URL:', devUrl)
+          return devUrl
+        }
+        
+        console.log('🔧 Using prod URL:', prodUrl)
+        return prodUrl
       }
       
-      if (isDev) {
-        console.log('🔧 Using dev URL:', devUrl)
-        return devUrl
-      }
-      
-      console.log('🔧 Using prod URL:', prodUrl)
-      return prodUrl
+      // Node.js environment fallback
+      return process.env.VITE_API_URL || '/.netlify/functions'
     })(),
     
     // External API endpoints
     AMADEUS: {
-      BASE_URL: 'https://api.amadeus.com/v2',
-      AUTH_URL: 'https://api.amadeus.com/v1/security/oauth2/token',
-      CLIENT_ID: import.meta.env.VITE_AMADEUS_API_KEY,
-      CLIENT_SECRET: import.meta.env.VITE_AMADEUS_API_SECRET,
+      BASE_URL: 'https://test.api.amadeus.com/v2',
+      AUTH_URL: 'https://test.api.amadeus.com/v1/security/oauth2/token',
+      CLIENT_ID: (() => {
+        if (typeof window !== 'undefined' && typeof import.meta !== 'undefined' && import.meta.env) {
+          return import.meta.env.VITE_AMADEUS_API_KEY
+        }
+        return process.env.AMADEUS_API_KEY || process.env.VITE_AMADEUS_API_KEY
+      })(),
+      CLIENT_SECRET: (() => {
+        if (typeof window !== 'undefined' && typeof import.meta !== 'undefined' && import.meta.env) {
+          return import.meta.env.VITE_AMADEUS_API_SECRET
+        }
+        return process.env.AMADEUS_API_SECRET || process.env.VITE_AMADEUS_API_SECRET
+      })(),
     },
     
     GOOGLE_MAPS: {
-      API_KEY: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+      API_KEY: (() => {
+        if (typeof window !== 'undefined' && typeof import.meta !== 'undefined' && import.meta.env) {
+          return import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+        }
+        return process.env.VITE_GOOGLE_MAPS_API_KEY
+      })(),
     },
     
     OPENAI: {
-      API_KEY: import.meta.env.VITE_OPENAI_API_KEY,
+      API_KEY: (() => {
+        if (typeof window !== 'undefined' && typeof import.meta !== 'undefined' && import.meta.env) {
+          return import.meta.env.VITE_OPENAI_API_KEY
+        }
+        return process.env.VITE_OPENAI_API_KEY
+      })(),
       MODEL: 'gpt-3.5-turbo',
       MAX_TOKENS: 2000,
     },
     
     // If using DeepSeek instead
     DEEPSEEK: {
-      API_KEY: import.meta.env.VITE_DEEPSEEK_API_KEY,
+      API_KEY: (() => {
+        if (typeof window !== 'undefined' && typeof import.meta !== 'undefined' && import.meta.env) {
+          return import.meta.env.VITE_DEEPSEEK_API_KEY
+        }
+        return process.env.VITE_DEEPSEEK_API_KEY
+      })(),
       BASE_URL: 'https://api.deepseek.com/v1',
       MODEL: 'deepseek-chat',
     },
     
     // Supabase
     SUPABASE: {
-      URL: import.meta.env.VITE_SUPABASE_URL,
-      ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      URL: (() => {
+        if (typeof window !== 'undefined' && typeof import.meta !== 'undefined' && import.meta.env) {
+          return import.meta.env.VITE_SUPABASE_URL
+        }
+        return process.env.VITE_SUPABASE_URL
+      })(),
+      ANON_KEY: (() => {
+        if (typeof window !== 'undefined' && typeof import.meta !== 'undefined' && import.meta.env) {
+          return import.meta.env.VITE_SUPABASE_ANON_KEY
+        }
+        return process.env.VITE_SUPABASE_ANON_KEY
+      })(),
     },
     
     // Analytics
-    GA_ID: import.meta.env.VITE_GA_TRACKING_ID,
+    GA_ID: (() => {
+      if (typeof window !== 'undefined' && typeof import.meta !== 'undefined' && import.meta.env) {
+        return import.meta.env.VITE_GA_TRACKING_ID
+      }
+      return process.env.VITE_GA_TRACKING_ID
+    })(),
     
     // Affiliate IDs
     AFFILIATES: {
-      BOOKING: import.meta.env.VITE_BOOKING_AFFILIATE_ID,
-      VIATOR: import.meta.env.VITE_VIATOR_AFFILIATE_ID,
+      BOOKING: (() => {
+        if (typeof window !== 'undefined' && typeof import.meta !== 'undefined' && import.meta.env) {
+          return import.meta.env.VITE_BOOKING_AFFILIATE_ID
+        }
+        return process.env.VITE_BOOKING_AFFILIATE_ID
+      })(),
+      VIATOR: (() => {
+        if (typeof window !== 'undefined' && typeof import.meta !== 'undefined' && import.meta.env) {
+          return import.meta.env.VITE_VIATOR_AFFILIATE_ID
+        }
+        return process.env.VITE_VIATOR_AFFILIATE_ID
+      })(),
     }
   }
   

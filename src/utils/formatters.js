@@ -1,5 +1,21 @@
 // Formatting utilities
 
+// Format price/currency
+export function formatPrice(amount, currency = 'USD') {
+  if (!amount) return 'Free'
+  
+  const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount
+  
+  if (isNaN(numAmount)) return 'Price unavailable'
+  
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currency.toUpperCase(),
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(numAmount)
+}
+
 // Format time (12-hour format)
 export function formatTime(time) {
     if (!time) return ''

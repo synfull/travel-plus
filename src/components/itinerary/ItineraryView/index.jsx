@@ -3,6 +3,8 @@ import DayCard from '../DayCard'
 import CostBreakdown from '../CostBreakdown'
 import BookingButton from '../BookingButton'
 import ExcursionCard from '../ExcursionCard'
+import FlightCard from '../FlightCard'
+import HotelCard from '../HotelCard'
 import TripMap from '../../maps/TripMap'
 
 export default function ItineraryView({ itinerary, activeView, selectedDay, onDaySelect }) {
@@ -29,6 +31,39 @@ export default function ItineraryView({ itinerary, activeView, selectedDay, onDa
               transition={{ duration: 0.3 }}
               className="space-y-6"
             >
+              {/* Flight Information */}
+              {itinerary.flights && (
+                <div className="glass-card p-6">
+                  <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                    <span>✈️</span>
+                    <span>Your Flights</span>
+                  </h2>
+                  <FlightCard 
+                    flight={itinerary.flights} 
+                    onBook={(flight) => console.log('Book flight:', flight)}
+                  />
+                </div>
+              )}
+
+              {/* Hotel Information */}
+              {itinerary.hotels && itinerary.hotels.length > 0 && (
+                <div className="glass-card p-6">
+                  <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                    <span>🏨</span>
+                    <span>Your Hotels</span>
+                  </h2>
+                  <div className="space-y-4">
+                    {itinerary.hotels.map((hotel, index) => (
+                      <HotelCard 
+                        key={index}
+                        hotel={hotel} 
+                        onBook={(hotel) => console.log('Book hotel:', hotel)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Overview Cards */}
               <div className="glass-card p-6">
                 <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">

@@ -134,46 +134,145 @@ export async function handler(event, context) {
   }
   
   async function searchFlights({ origin, destination, startDate, endDate, passengers }) {
-    // Mock implementation - replace with actual Amadeus API call
-    return {
-      outbound: {
-        airline: 'American Airlines',
-        flightNumber: 'AA123',
-        departure: `${startDate}T08:00:00`,
-        arrival: `${startDate}T12:00:00`,
-        price: 324 * passengers,
-      },
-      return: {
-        airline: 'American Airlines',
-        flightNumber: 'AA456',
-        departure: `${endDate}T16:00:00`,
-        arrival: `${endDate}T23:00:00`,
-        price: 324 * passengers,
-      },
-      totalPrice: 648 * passengers,
+    try {
+      console.log('🔍 Calling real flight search API...')
+      
+      // Call our dedicated flight search function
+      const flightSearchUrl = `${process.env.URL || 'http://localhost:8888'}/.netlify/functions/search-flights`
+      
+      const response = await fetch(flightSearchUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          origin,
+          destination,
+          startDate,
+          endDate,
+          passengers
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Flight search failed: ${response.status}`)
+      }
+
+      const flightData = await response.json()
+      
+      if (flightData.success && flightData.flights.length > 0) {
+        // Return the best flight option (first result)
+        const bestFlight = flightData.flights[0]
+        
+        return {
+          outbound: bestFlight.outbound,
+          return: bestFlight.return,
+          totalPrice: bestFlight.totalPrice,
+          currency: bestFlight.currency,
+          bookingUrl: bestFlight.bookingUrl,
+          source: 'amadeus'
+        }
+      } else {
+        throw new Error('No flights found')
+      }
+      
+    } catch (error) {
+      console.warn('⚠️ Flight search failed, using fallback:', error.message)
+      
+      // Fallback to mock data
+      return {
+        outbound: {
+          airline: 'American Airlines',
+          flightNumber: 'AA123',
+          departure: `${startDate}T08:00:00`,
+          arrival: `${startDate}T12:00:00`,
+          price: 324 * passengers,
+        },
+        return: endDate ? {
+          airline: 'American Airlines',
+          flightNumber: 'AA456',
+          departure: `${endDate}T16:00:00`,
+          arrival: `${endDate}T23:00:00`,
+          price: 324 * passengers,
+        } : null,
+        totalPrice: 648 * passengers,
+        source: 'fallback'
+      }
     }
   }
   
   async function searchHotels({ destination, checkinDate, checkoutDate, guests, budget }) {
-    // Mock implementation - replace with actual Booking.com API call
-    return [
-      {
-        name: 'Beachfront Resort & Spa',
-        rating: 4.5,
-        price: 180,
-        location: 'Hotel Zone',
-        amenities: ['Pool', 'Beach Access', 'Free WiFi', 'Breakfast'],
-        image: 'https://via.placeholder.com/400x300',
-      },
-      {
-        name: 'Downtown Boutique Hotel',
-        rating: 4.3,
-        price: 120,
-        location: 'City Center',
-        amenities: ['Rooftop Bar', 'Free WiFi', 'Gym'],
-        image: 'https://via.placeholder.com/400x300',
-      },
-    ]
+    try {
+      console.log('🔍 Calling real hotel search API...')
+      
+      // Call our dedicated hotel search function
+      const hotelSearchUrl = `${process.env.URL || 'http://localhost:8888'}/.netlify/functions/search-hotels`
+      
+      const response = await fetch(hotelSearchUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          destination,
+          checkinDate,
+          checkoutDate,
+          guests,
+          maxPrice: budget ? Math.round(budget * 1.5) : null // Allow 50% over budget for flexibility
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Hotel search failed: ${response.status}`)
+      }
+
+      const hotelData = await response.json()
+      
+      if (hotelData.success && hotelData.hotels.length > 0) {
+        // Return processed hotel data
+        return hotelData.hotels.map(hotel => ({
+          name: hotel.name,
+          rating: hotel.rating,
+          price: hotel.pricePerNight,
+          location: hotel.location,
+          address: hotel.address,
+          amenities: hotel.amenities,
+          images: hotel.images,
+          image: hotel.images?.[0] || 'https://via.placeholder.com/400x300',
+          room: hotel.room,
+          policies: hotel.policies,
+          bookingUrl: hotel.bookingUrl,
+          source: 'amadeus'
+        }))
+      } else {
+        throw new Error('No hotels found')
+      }
+      
+    } catch (error) {
+      console.warn('⚠️ Hotel search failed, using fallback:', error.message)
+      
+      // Fallback to mock data
+      return [
+        {
+          name: 'Beachfront Resort & Spa',
+          rating: 4.5,
+          price: 180,
+          location: 'Hotel Zone',
+          amenities: ['Pool', 'Beach Access', 'Free WiFi', 'Breakfast'],
+          image: 'https://via.placeholder.com/400x300',
+          source: 'fallback'
+        },
+        {
+          name: 'Downtown Boutique Hotel',
+          rating: 4.3,
+          price: 120,
+          location: 'City Center',
+          amenities: ['Rooftop Bar', 'Free WiFi', 'Gym'],
+          image: 'https://via.placeholder.com/400x300',
+          source: 'fallback'
+        },
+      ]
+    }
   }
   
   async function searchActivities({ destination, categories, budget, duration }) {
