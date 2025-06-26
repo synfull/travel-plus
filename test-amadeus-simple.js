@@ -2,14 +2,26 @@
  * Simple Amadeus API Test
  */
 
-// Direct API test without complex imports
-const AMADEUS_API_KEY = '***REMOVED***'
-const AMADEUS_API_SECRET = 'rg8HlKXlnJF7q6WC'
+// Load environment variables
+require('dotenv').config()
+
+// Get API credentials from environment variables
+const AMADEUS_API_KEY = process.env.AMADEUS_API_KEY
+const AMADEUS_API_SECRET = process.env.AMADEUS_API_SECRET
 const AUTH_URL = 'https://api.amadeus.com/v1/security/oauth2/token'
 const BASE_URL = 'https://api.amadeus.com/v2'
 
 async function testAmadeusAPI() {
   console.log('🧪 Testing Amadeus API directly...\n')
+  
+  // Check if credentials are available
+  if (!AMADEUS_API_KEY || !AMADEUS_API_SECRET) {
+    console.error('❌ Missing API credentials!')
+    console.error('   Please add the following to your .env file:')
+    console.error('   AMADEUS_API_KEY=your_api_key')
+    console.error('   AMADEUS_API_SECRET=your_api_secret')
+    return
+  }
   
   try {
     // Step 1: Authentication
