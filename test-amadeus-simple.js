@@ -2,17 +2,19 @@
  * Simple Amadeus API Test
  */
 
-// Load environment variables
-require('dotenv').config()
+// Load environment variables for ES modules
+import { config } from 'dotenv'
+config()
 
 // Get API credentials from environment variables
 const AMADEUS_API_KEY = process.env.AMADEUS_API_KEY
 const AMADEUS_API_SECRET = process.env.AMADEUS_API_SECRET
-const AUTH_URL = 'https://api.amadeus.com/v1/security/oauth2/token'
-const BASE_URL = 'https://api.amadeus.com/v2'
+const AUTH_URL = 'https://test.api.amadeus.com/v1/security/oauth2/token'
+const BASE_URL = 'https://test.api.amadeus.com/v2'
 
 async function testAmadeusAPI() {
   console.log('🧪 Testing Amadeus API directly...\n')
+  console.log('🔧 Using TEST environment: test.api.amadeus.com\n')
   
   // Check if credentials are available
   if (!AMADEUS_API_KEY || !AMADEUS_API_SECRET) {
@@ -22,6 +24,10 @@ async function testAmadeusAPI() {
     console.error('   AMADEUS_API_SECRET=your_api_secret')
     return
   }
+  
+  console.log('🔑 API Credentials Found:')
+  console.log(`   API Key: ${AMADEUS_API_KEY.substring(0, 8)}...`)
+  console.log(`   API Secret: ${AMADEUS_API_SECRET.substring(0, 8)}...\n`)
   
   try {
     // Step 1: Authentication
@@ -79,15 +85,23 @@ async function testAmadeusAPI() {
     // Step 3: Test Flight Search
     console.log('3️⃣ Testing Flight Search...')
     
+    // Use future dates (30 days from now)
+    const departureDate = new Date()
+    departureDate.setDate(departureDate.getDate() + 30)
+    const returnDate = new Date()
+    returnDate.setDate(returnDate.getDate() + 37)
+    
     const flightParams = new URLSearchParams({
       originLocationCode: 'NYC',
       destinationLocationCode: 'LAX',
-      departureDate: '2024-06-01',
-      returnDate: '2024-06-08',
+      departureDate: departureDate.toISOString().split('T')[0], // YYYY-MM-DD format
+      returnDate: returnDate.toISOString().split('T')[0],
       adults: '2',
       travelClass: 'ECONOMY',
       max: '5'
     })
+    
+    console.log(`   Searching flights: NYC → LAX on ${departureDate.toISOString().split('T')[0]}`)
     
     const flightResponse = await fetch(`${BASE_URL}/shopping/flight-offers?${flightParams}`, {
       headers: {

@@ -113,11 +113,11 @@ class SmartItineraryGenerator {
         console.log('🤖 DeepSeek enhancement enabled but no recommendations to enhance')
       }
 
-      // NEW: Search for flights and hotels in parallel with activities
-      console.log('🔍 Searching for flights and hotels...')
-      const [flights, hotels] = await Promise.all([
-        this.searchFlights(tripData),
-        this.searchHotels(tripData)
+      // Execute all searches in parallel for better performance
+      const [venues, hotels, flights] = await Promise.all([
+        this.searchVenues(tripData),
+        this.searchHotelsEnhanced(tripData),
+        this.searchFlights(tripData)
       ])
       
       // Build itinerary using existing logic
@@ -1025,6 +1025,61 @@ class SmartItineraryGenerator {
           source: 'fallback'
         },
       ]
+    }
+  }
+
+  // Enhanced hotel search with image fetching
+  async searchHotelsEnhanced(tripData) {
+    console.log('🏨 Searching for hotels with enhanced images...')
+    
+    try {
+      // Get hotels from Amadeus (primary) or Hotels.com (fallback)
+      let hotelResults = await this.amadeusService.searchHotels({
+        destination: tripData.destination,
+        checkInDate: tripData.dates.start,
+        checkOutDate: tripData.dates.end,
+        guests: tripData.travelers,
+        rooms: Math.ceil(tripData.travelers / 2)
+      })
+
+      // If Amadeus fails, try Hotels.com fallback
+      if (!hotelResults.hotels || hotelResults.hotels.length === 0) {
+        console.log('🔄 Amadeus hotels unavailable, trying Hotels.com fallback...')
+        hotelResults = await this.hotelsComService.searchHotels({
+          destination: tripData.destination,
+          checkInDate: tripData.dates.start,
+          checkOutDate: tripData.dates.end,
+          guests: tripData.travelers,
+          rooms: Math.ceil(tripData.travelers / 2)
+        })
+      }
+
+      // Enhance hotels with real images using Google Places API
+      if (hotelResults.hotels && hotelResults.hotels.length > 0) {
+        console.log('📸 Enhancing hotels with real images...')
+        
+        const enhancedHotels = await Promise.all(
+          hotelResults.hotels.slice(0, 5).map(async (hotel) => {
+            try {
+              // Use Google Places API to get real hotel images
+              const enhancedHotel = await this.googlePlacesService.enhanceHotelWithImages(hotel)
+              return enhancedHotel
+            } catch (error) {
+              console.warn(`⚠️ Failed to enhance images for ${hotel.name}:`, error.message)
+              return hotel // Return original hotel if enhancement fails
+            }
+          })
+        )
+
+        console.log(`✅ Enhanced ${enhancedHotels.length} hotels with images`)
+        return enhancedHotels
+      }
+
+      return hotelResults.hotels || []
+      
+    } catch (error) {
+      console.error('❌ Hotel search failed:', error.message)
+      return this.getFallbackHotels(tripData.destination)
     }
   }
 }

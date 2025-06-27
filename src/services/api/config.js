@@ -32,7 +32,7 @@ export const API_CONFIG = {
     
     // External API endpoints
     AMADEUS: {
-      BASE_URL: 'https://test.api.amadeus.com/v2',
+      BASE_URL: 'https://test.api.amadeus.com',
       AUTH_URL: 'https://test.api.amadeus.com/v1/security/oauth2/token',
       CLIENT_ID: (() => {
         if (typeof window !== 'undefined' && typeof import.meta !== 'undefined' && import.meta.env) {

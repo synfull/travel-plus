@@ -3,218 +3,193 @@
  * Phase 4: Real Amadeus API Integration
  */
 
-import { AmadeusService } from '../../src/services/api/AmadeusService.js'
-import { HotelsComService } from '../../src/services/api/HotelsComService.js'
+import dotenv from 'dotenv'
+import path from 'path'
+import { fileURLToPath } from 'url'
 
-/**
- * Format date from ISO string to YYYY-MM-DD
- */
-function formatDateForAmadeus(dateString) {
-  if (!dateString) return null
-  try {
-    return new Date(dateString).toISOString().split('T')[0]
-  } catch (error) {
-    console.warn('⚠️ Date formatting error:', error.message)
-    return dateString
-  }
+// Load environment variables
+dotenv.config()
+
+// Import working hotel services only
+import { ExpediaRapidService } from '../../src/services/api/ExpediaRapidService.js'
+import { AmadeusService } from '../../src/services/api/AmadeusService.js'
+
+// CORS headers
+const headers = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Content-Type': 'application/json'
 }
 
-// Initialize services
-console.log('🔧 Environment check:', {
-  hasAmadeusKey: !!process.env.AMADEUS_API_KEY,
-  hasAmadeusSecret: !!process.env.AMADEUS_API_SECRET,
-  hasRapidApiKey: !!process.env.RAPIDAPI_KEY,
-  amadeusKeyPreview: process.env.AMADEUS_API_KEY ? process.env.AMADEUS_API_KEY.substring(0, 8) + '...' : 'MISSING',
-  rapidApiKeyPreview: process.env.RAPIDAPI_KEY ? process.env.RAPIDAPI_KEY.substring(0, 8) + '...' : 'MISSING'
-})
-
-const amadeus = new AmadeusService({
-  clientId: process.env.AMADEUS_API_KEY,
-  clientSecret: process.env.AMADEUS_API_SECRET
-})
-
-const hotelscom = new HotelsComService({
-  apiKey: process.env.RAPIDAPI_KEY
-})
-
-export async function handler(event, context) {
-  // Only allow POST requests
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS'
-      },
-      body: JSON.stringify({ error: 'Method not allowed' })
-    }
+// Mock hotel data for ultimate fallback
+const mockHotels = [
+  {
+    id: 'mock-1',
+    name: 'Sample Hotel Downtown',
+    rating: 4,
+    location: {
+      address: { line1: '123 Main Street' },
+      coordinates: { latitude: 40.7128, longitude: -74.0060 }
+    },
+    price: { total: 150, currency: 'USD' },
+    amenities: ['WiFi', 'Pool', 'Gym'],
+    images: ['https://via.placeholder.com/400x300?text=Hotel+Image']
+  },
+  {
+    id: 'mock-2', 
+    name: 'Business Hotel Central',
+    rating: 4,
+    location: {
+      address: { line1: '456 Business Ave' },
+      coordinates: { latitude: 40.7589, longitude: -73.9851 }
+    },
+    price: { total: 200, currency: 'USD' },
+    amenities: ['WiFi', 'Business Center', 'Restaurant'],
+    images: ['https://via.placeholder.com/400x300?text=Business+Hotel']
   }
+]
 
+export const handler = async (event, context) => {
   // Handle CORS preflight
   if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS'
-      }
-    }
+    return { statusCode: 200, headers, body: '' }
   }
 
   try {
-    console.log('🏨 Hotel search request received')
+    const { destination, checkInDate, checkOutDate, guests = 2, rooms = 1 } = JSON.parse(event.body)
     
-    // Parse request body
-    const searchParams = JSON.parse(event.body)
-    const {
-      destination,
-      checkinDate,
-      checkoutDate,
-      guests = 1,
-      rooms = 1,
-      maxPrice = null,
-      amenities = []
-    } = searchParams
+    console.log(`🏨 Hotel search request: ${destination}, ${checkInDate} to ${checkOutDate}, ${guests} guests, ${rooms} rooms`)
 
-    // Validate required parameters
-    if (!destination || !checkinDate || !checkoutDate) {
-      return {
-        statusCode: 400,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ 
-          error: 'Missing required parameters: destination, checkinDate, checkoutDate' 
-        })
-      }
+    // Debug environment variables
+    console.log('🔧 Environment check:')
+    console.log('- hasExpediaApiKey:', !!process.env.RAPIDAPI_KEY)
+    console.log('- hasAmadeusApiKey:', !!process.env.AMADEUS_API_KEY)
+    console.log('- hasAmadeusSecret:', !!process.env.AMADEUS_API_SECRET)
+
+    let hotels = []
+    let source = 'mock'
+
+    // Initialize services
+    let expediaService, amadeusService
+
+    try {
+      expediaService = new ExpediaRapidService({
+        apiKey: process.env.RAPIDAPI_KEY,
+        rateLimitDelayMs: 2000
+      })
+    } catch (error) {
+      console.log('⚠️ ExpediaRapidService initialization failed:', error.message)
     }
 
-    // Format dates for Amadeus API
-    const checkInDate = formatDateForAmadeus(checkinDate)
-    const checkOutDate = formatDateForAmadeus(checkoutDate)
-
-    console.log(`🔍 Searching hotels in: ${destination}`, {
-      checkInDate,
-      checkOutDate,
-      guests,
-      rooms,
-      maxPrice
-    })
-
-    // Try Amadeus API first, then Hotels.com as fallback
-    let hotelResults
-    let isAmadeusSuccess = false
-    
     try {
-      console.log('🔄 Trying Amadeus API first...')
-      hotelResults = await amadeus.searchHotels({
-        destination,
-        checkInDate,
-        checkOutDate,
-        guests: parseInt(guests),
-        rooms: parseInt(rooms),
-        maxPrice: maxPrice ? parseInt(maxPrice) : null,
-        amenities
+      amadeusService = new AmadeusService({
+        clientId: process.env.AMADEUS_API_KEY,
+        clientSecret: process.env.AMADEUS_API_SECRET,
+        environment: 'test'
       })
-      isAmadeusSuccess = true
-      console.log('✅ Amadeus API succeeded')
-    } catch (amadeusError) {
-      console.log('❌ Amadeus API failed, trying Hotels.com fallback...')
-      
+    } catch (error) {
+      console.log('⚠️ AmadeusService initialization failed:', error.message)
+    }
+
+    // Priority 1: Try Expedia Rapid API (Direct)
+    if (expediaService) {
       try {
-        hotelResults = await hotelscom.searchHotels({
+        console.log('🚀 Priority 1: Trying Expedia Rapid API...')
+        const expediaHotels = await expediaService.searchHotels({
           destination,
           checkInDate,
           checkOutDate,
-          guests: parseInt(guests),
-          rooms: parseInt(rooms)
+          guests,
+          rooms
         })
-        console.log('✅ Hotels.com API succeeded')
-      } catch (hotelscomError) {
-        console.log('❌ Hotels.com API also failed, using mock data')
-        throw new Error(`Both APIs failed - Amadeus: ${amadeusError.message}, Hotels.com: ${hotelscomError.message}`)
+        
+        if (expediaHotels && expediaHotels.length > 0) {
+          hotels = expediaHotels.slice(0, 10) // Limit to top 10
+          source = 'expedia'
+          console.log(`✅ Expedia success: ${hotels.length} hotels found`)
+        } else {
+          console.log('❌ Expedia: No hotels found in response')
+        }
+      } catch (error) {
+        console.log('❌ Expedia API error:', error.message)
       }
     }
 
-    // Process results for frontend compatibility
-    const processedResults = {
+    // Priority 2: Try Amadeus API (Official, Working)
+    if (hotels.length === 0 && amadeusService) {
+      try {
+        console.log('🚀 Priority 2: Trying Amadeus API...')
+        await amadeusService.authenticate()
+        
+        const amadeusHotels = await amadeusService.searchHotels({
+          destination,
+          checkInDate,
+          checkOutDate,
+          guests,
+          rooms
+        })
+        
+        if (amadeusHotels && amadeusHotels.length > 0) {
+          hotels = amadeusHotels.slice(0, 10) // Limit to top 10
+          source = 'amadeus'
+          console.log(`✅ Amadeus success: ${hotels.length} hotels found`)
+        } else {
+          console.log('❌ Amadeus: No hotels found in response')
+        }
+      } catch (error) {
+        console.log('❌ Amadeus API error:', error.message)
+      }
+    }
+
+    // Final Fallback: Use mock data
+    if (hotels.length === 0) {
+      console.log('🔄 All APIs failed, using mock data fallback')
+      hotels = mockHotels
+      source = 'mock'
+    }
+
+    const response = {
       success: true,
-      provider: isAmadeusSuccess ? 'Amadeus' : hotelResults.meta?.provider || 'Hotels.com',
-      hotels: hotelResults.hotels.map(hotel => ({
-        id: hotel.id,
-        name: hotel.name,
-        rating: hotel.rating,
-        price: hotel.price.total,
-        currency: hotel.price.currency,
-        pricePerNight: hotel.price.total,
-        location: hotel.location.address.cityName || destination,
-        address: formatAddress(hotel.location.address),
-        coordinates: hotel.location.coordinates,
-        amenities: hotel.amenities.slice(0, 8), // Limit amenities display
-        images: hotel.media.map(media => media.uri).slice(0, 5), // Limit images
-        room: {
-          type: hotel.room.typeEstimated?.category || hotel.room.type || 'Standard Room',
-          description: hotel.room.description
-        },
-        policies: {
-          checkIn: hotel.policies.checkIn || '15:00',
-          checkOut: hotel.policies.checkOut || '11:00',
-          cancellation: hotel.policies.cancellation?.type || 'Unknown'
-        },
-        contact: {
-          phone: hotel.contact.phone,
-          email: hotel.contact.email
-        },
-        bookingCode: hotel.bookingCode,
-        bookingUrl: `https://amadeus.com/book/hotel/${hotel.id}`, // Placeholder booking URL
-        distance: hotel.location.distance?.value ? 
-          `${hotel.location.distance.value} ${hotel.location.distance.unit}` : null
-      })),
-      meta: {
-        count: hotelResults.hotels.length,
-        searchedAt: hotelResults.meta.searchedAt,
-        destination: hotelResults.meta.destination || destination,
-        checkinDate,
-        checkoutDate,
-        guests,
-        rooms
+      data: {
+        hotels: hotels.slice(0, 5), // Limit final results to 5
+        metadata: {
+          destination,
+          checkInDate,
+          checkOutDate,
+          guests,
+          rooms,
+          source,
+          totalFound: hotels.length,
+          timestamp: new Date().toISOString()
+        }
       }
     }
 
-    console.log(`✅ Found ${processedResults.hotels.length} hotel options`)
-
+    console.log(`✅ Hotel search completed. Source: ${source}, Hotels: ${hotels.length}`)
+    
     return {
       statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=3600' // Cache for 1 hour
-      },
-      body: JSON.stringify(processedResults)
+      headers,
+      body: JSON.stringify(response)
     }
 
   } catch (error) {
-    console.error('❌ Hotel search error:', error.message)
-    
-    // Return fallback hotel data on error
-    const fallbackHotels = generateFallbackHotels(JSON.parse(event.body))
+    console.error('❌ Hotel search error:', error)
     
     return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json'
-      },
+      statusCode: 500,
+      headers,
       body: JSON.stringify({
-        success: true,
-        hotels: fallbackHotels,
-        meta: {
-          count: fallbackHotels.length,
-          isFallback: true,
-          error: error.message
+        success: false,
+        error: 'Hotel search failed',
+        details: error.message,
+        data: {
+          hotels: mockHotels.slice(0, 3), // Provide fallback even on error
+          metadata: {
+            source: 'mock-error-fallback',
+            timestamp: new Date().toISOString()
+          }
         }
       })
     }

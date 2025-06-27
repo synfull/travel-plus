@@ -26,10 +26,12 @@ export class GooglePlacesService {
     this.options = {
       apiKey: getApiKey(),
       baseUrl: 'https://maps.googleapis.com/maps/api/place',
+      proxyUrl: '/.netlify/functions/google-places-proxy', // New proxy URL
       maxResults: 20,
       radius: 5000, // 5km radius
       enableCaching: true,
       cacheTimeout: 3600000, // 1 hour
+      useProxy: true, // Feature flag to enable/disable proxy
       ...options
     }
 
@@ -39,6 +41,68 @@ export class GooglePlacesService {
     
     console.log('🌐 GooglePlacesService: Real API integration initialized')
     console.log(`🔑 GooglePlacesService: API Key configured: ${this.options.apiKey ? 'YES' : 'NO'}`)
+    console.log(`🔄 GooglePlacesService: Using proxy: ${this.options.useProxy ? 'YES' : 'NO'}`)
+  }
+
+  /**
+   * Call Google Places API through proxy or directly
+   */
+  async callGooglePlacesAPI(endpoint, params = {}) {
+    if (this.options.useProxy) {
+      // Use Netlify function proxy to avoid CORS issues
+      const queryParams = new URLSearchParams({
+        endpoint,
+        ...Object.fromEntries(
+          Object.entries(params).map(([key, value]) => [`params.${key}`, value])
+        )
+      })
+      
+      const proxyUrl = `${this.options.proxyUrl}?${queryParams.toString()}`
+      console.log(`🔄 GooglePlacesService: Using proxy for ${endpoint}`)
+      
+      const response = await fetch(proxyUrl)
+      if (!response.ok) {
+        throw new Error(`Proxy request failed: ${response.status} ${response.statusText}`)
+      }
+      
+      return await response.json()
+    } else {
+      // Direct API call (original method) - may fail due to CORS in browser
+      const apiUrl = this.buildDirectAPIUrl(endpoint, params)
+      console.log(`🌐 GooglePlacesService: Direct API call to ${endpoint}`)
+      
+      const response = await fetch(apiUrl)
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status} ${response.statusText}`)
+      }
+      
+      return await response.json()
+    }
+  }
+
+  /**
+   * Build direct API URL (for fallback/testing)
+   */
+  buildDirectAPIUrl(endpoint, params) {
+    const endpointUrls = {
+      geocode: 'https://maps.googleapis.com/maps/api/geocode/json',
+      nearbysearch: `${this.options.baseUrl}/nearbysearch/json`,
+      textsearch: `${this.options.baseUrl}/textsearch/json`,
+      details: `${this.options.baseUrl}/details/json`,
+      photos: `${this.options.baseUrl}/photo`
+    }
+    
+    const baseUrl = endpointUrls[endpoint]
+    if (!baseUrl) {
+      throw new Error(`Unknown endpoint: ${endpoint}`)
+    }
+    
+    const queryParams = new URLSearchParams({
+      ...params,
+      key: this.options.apiKey
+    })
+    
+    return `${baseUrl}?${queryParams.toString()}`
   }
 
   /**
@@ -88,16 +152,13 @@ export class GooglePlacesService {
     }
 
     try {
-      const url = `${this.options.baseUrl}/details/json`
-      const params = new URLSearchParams({
-        place_id: placeId,
-        fields: 'name,formatted_address,geometry,rating,user_ratings_total,price_level,opening_hours,photos,reviews,website,formatted_phone_number,types',
-        key: this.options.apiKey
-      })
-
       await this.rateLimitDelay()
-      const response = await fetch(`${url}?${params}`)
-      const data = await response.json()
+      
+      // Use proxy to avoid CORS issues
+      const data = await this.callGooglePlacesAPI('details', {
+        place_id: placeId,
+        fields: 'name,formatted_address,geometry,rating,user_ratings_total,price_level,opening_hours,photos,reviews,website,formatted_phone_number,types'
+      })
 
       if (data.status !== 'OK') {
         throw new Error(`Google Places API error: ${data.status}`)
@@ -136,15 +197,12 @@ export class GooglePlacesService {
     }
 
     try {
-      const url = 'https://maps.googleapis.com/maps/api/geocode/json'
-      const params = new URLSearchParams({
-        address: destination,
-        key: this.options.apiKey
-      })
-
       await this.rateLimitDelay()
-      const response = await fetch(`${url}?${params}`)
-      const data = await response.json()
+      
+      // Use proxy to avoid CORS issues
+      const data = await this.callGooglePlacesAPI('geocode', {
+        address: destination
+      })
 
       if (data.status !== 'OK' || !data.results.length) {
         throw new Error(`Geocoding failed: ${data.status}`)
@@ -286,17 +344,14 @@ export class GooglePlacesService {
     }
 
     try {
-      const url = `${this.options.baseUrl}/nearbysearch/json`
-      const params = new URLSearchParams({
+      this.requestCount++
+      
+      // Use proxy to avoid CORS issues
+      const data = await this.callGooglePlacesAPI('nearbysearch', {
         location: `${coordinates.lat},${coordinates.lng}`,
         radius: this.options.radius,
-        keyword: queryObj.query,
-        key: this.options.apiKey
+        keyword: queryObj.query
       })
-
-      this.requestCount++
-      const response = await fetch(`${url}?${params}`)
-      const data = await response.json()
 
       if (data.status !== 'OK') {
         throw new Error(`Google Places API error: ${data.status}`)
@@ -554,5 +609,126 @@ export class GooglePlacesService {
   calculateCacheHitRate() {
     // This would require tracking cache hits vs misses
     return 0.75 // Placeholder value
+  }
+
+  /**
+   * Get hotel images using Google Places Photo API
+   */
+  async getHotelImages(hotelName, location, maxImages = 3) {
+    try {
+      console.log(`📸 Fetching images for hotel: ${hotelName} in ${location}`)
+      
+      // Search for the hotel specifically using proxy
+      const searchQuery = `${hotelName} hotel ${location}`
+      
+      const data = await this.callGooglePlacesAPI('textsearch', {
+        query: searchQuery,
+        type: 'lodging'
+      })
+      
+      if (data.results && data.results.length > 0) {
+        const hotel = data.results[0] // Get the best match
+        
+        if (hotel.photos && hotel.photos.length > 0) {
+          // Convert photo references to actual image URLs using proxy
+          const imageUrls = hotel.photos.slice(0, maxImages).map(photo => {
+            if (this.options.useProxy) {
+              // Use proxy for photo URLs to avoid CORS
+              return `${this.options.proxyUrl}?endpoint=photos&params.photoreference=${photo.photo_reference}&params.maxwidth=800`
+            } else {
+              // Direct API call (original method)
+              return `${this.options.baseUrl}/photo?maxwidth=800&photo_reference=${photo.photo_reference}&key=${this.options.apiKey}`
+            }
+          })
+          
+          console.log(`✅ Found ${imageUrls.length} images for ${hotelName}`)
+          return imageUrls
+        }
+      }
+      
+      console.log(`⚠️ No images found for ${hotelName}`)
+      return []
+      
+    } catch (error) {
+      console.error(`❌ Error fetching hotel images:`, error.message)
+      return []
+    }
+  }
+
+  /**
+   * Enhance hotel data with real images
+   */
+  async enhanceHotelWithImages(hotel) {
+    try {
+      if (!hotel.name || !hotel.location?.cityName) {
+        return hotel // Return unchanged if missing required data
+      }
+      
+      // Get real images from Google Places
+      const realImages = await this.getHotelImages(hotel.name, hotel.location.cityName)
+      
+      if (realImages.length > 0) {
+        return {
+          ...hotel,
+          images: realImages,
+          imageSource: 'google_places'
+        }
+      }
+      
+      // If no real images found, use themed fallback images based on hotel name/location
+      const fallbackImages = this.getThemedFallbackImages(hotel)
+      
+      return {
+        ...hotel,
+        images: fallbackImages,
+        imageSource: 'themed_fallback'
+      }
+      
+    } catch (error) {
+      console.error(`❌ Error enhancing hotel with images:`, error.message)
+      return hotel // Return unchanged on error
+    }
+  }
+
+  /**
+   * Get themed fallback images based on hotel characteristics
+   */
+  getThemedFallbackImages(hotel) {
+    const { name, location, rating } = hotel
+    const cityName = location?.cityName || 'destination'
+    const isLuxury = rating >= 4.5
+    const isBeach = location?.address?.toLowerCase().includes('beach') || cityName.toLowerCase().includes('beach')
+    const isCity = location?.address?.toLowerCase().includes('downtown') || location?.address?.toLowerCase().includes('center')
+    
+    let images = []
+    
+    if (isLuxury) {
+      images = [
+        'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800&h=600&fit=crop', // Luxury hotel exterior
+        'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800&h=600&fit=crop', // Luxury hotel room
+        'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=800&h=600&fit=crop'  // Luxury hotel lobby
+      ]
+    } else if (isBeach) {
+      images = [
+        'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=800&h=600&fit=crop', // Beach hotel
+        'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800&h=600&fit=crop', // Beach hotel room
+        'https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?w=800&h=600&fit=crop'  // Beach hotel pool
+      ]
+    } else if (isCity) {
+      images = [
+        'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&h=600&fit=crop', // City hotel exterior
+        'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?w=800&h=600&fit=crop', // City hotel room
+        'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=800&h=600&fit=crop'  // City hotel view
+      ]
+    } else {
+      // Standard hotel images
+      images = [
+        'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&h=600&fit=crop',
+        'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=800&h=600&fit=crop',
+        'https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?w=800&h=600&fit=crop'
+      ]
+    }
+    
+    return images
   }
 } 

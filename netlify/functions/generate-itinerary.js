@@ -161,7 +161,7 @@ export async function handler(event, context) {
       const flightData = await response.json()
       
       if (flightData.success && flightData.flights.length > 0) {
-        // Return the best flight option (first result)
+        // Return only the best flight option to reduce data
         const bestFlight = flightData.flights[0]
         
         return {
@@ -229,20 +229,20 @@ export async function handler(event, context) {
       const hotelData = await response.json()
       
       if (hotelData.success && hotelData.hotels.length > 0) {
-        // Return processed hotel data
-        return hotelData.hotels.map(hotel => ({
+        // Return only top 5 hotels to reduce AI processing load
+        return hotelData.hotels.slice(0, 5).map(hotel => ({
           name: hotel.name,
           rating: hotel.rating,
           price: hotel.pricePerNight,
           location: hotel.location,
           address: hotel.address,
-          amenities: hotel.amenities,
-          images: hotel.images,
+          amenities: hotel.amenities?.slice(0, 4) || [], // Limit amenities
+          images: hotel.images?.slice(0, 2) || [], // Limit images
           image: hotel.images?.[0] || 'https://via.placeholder.com/400x300',
           room: hotel.room,
           policies: hotel.policies,
           bookingUrl: hotel.bookingUrl,
-          source: 'amadeus'
+          source: 'real_api'
         }))
       } else {
         throw new Error('No hotels found')
@@ -251,14 +251,14 @@ export async function handler(event, context) {
     } catch (error) {
       console.warn('⚠️ Hotel search failed, using fallback:', error.message)
       
-      // Fallback to mock data
+      // Fallback to simplified mock data
       return [
         {
           name: 'Beachfront Resort & Spa',
           rating: 4.5,
           price: 180,
           location: 'Hotel Zone',
-          amenities: ['Pool', 'Beach Access', 'Free WiFi', 'Breakfast'],
+          amenities: ['Pool', 'Free WiFi', 'Breakfast'],
           image: 'https://via.placeholder.com/400x300',
           source: 'fallback'
         },
@@ -267,7 +267,7 @@ export async function handler(event, context) {
           rating: 4.3,
           price: 120,
           location: 'City Center',
-          amenities: ['Rooftop Bar', 'Free WiFi', 'Gym'],
+          amenities: ['Free WiFi', 'Gym'],
           image: 'https://via.placeholder.com/400x300',
           source: 'fallback'
         },
@@ -276,88 +276,120 @@ export async function handler(event, context) {
   }
   
   async function searchActivities({ destination, categories, budget, duration }) {
-    // Mock implementation - replace with actual Viator API call
-    
-    // Use the same coordinate lookup as generateRandomLocation
-    const baseCoords = getDestinationCoords(destination)
-    
-    const activities = [
-      {
-        name: 'Historic City Center Tour',
-        category: 'culture',
-        price: 45,
-        duration: '3 hours',
-        description: `Explore the historic heart of ${destination}`,
-        location: {
-          lat: baseCoords.lat + (Math.random() - 0.5) * 0.02,
-          lng: baseCoords.lng + (Math.random() - 0.5) * 0.02
-        }
-      },
-      {
-        name: 'Local Cuisine Experience',
-        category: 'food',
-        price: 65,
-        duration: '2 hours',
-        description: 'Taste authentic local dishes and specialties',
-        location: {
-          lat: baseCoords.lat + (Math.random() - 0.5) * 0.02,
-          lng: baseCoords.lng + (Math.random() - 0.5) * 0.02
-        }
-      },
-      {
-        name: 'Cultural Museum Visit',
-        category: 'culture',
-        price: 25,
-        duration: '2 hours',
-        description: 'Discover the rich cultural heritage',
-        location: {
-          lat: baseCoords.lat + (Math.random() - 0.5) * 0.02,
-          lng: baseCoords.lng + (Math.random() - 0.5) * 0.02
-        }
-      },
-      {
-        name: 'Adventure Activity',
-        category: 'adventure',
-        price: 85,
-        duration: '4 hours',
-        description: 'Thrilling outdoor adventure experience',
-        location: {
-          lat: baseCoords.lat + (Math.random() - 0.5) * 0.03,
-          lng: baseCoords.lng + (Math.random() - 0.5) * 0.03
-        }
-      },
-      {
-        name: 'Nightlife Experience',
-        category: 'nightlife',
-        price: 55,
-        duration: '4 hours',
-        description: 'Experience the vibrant nightlife scene',
-        location: {
-          lat: baseCoords.lat + (Math.random() - 0.5) * 0.02,
-          lng: baseCoords.lng + (Math.random() - 0.5) * 0.02
-        }
-      },
-      {
-        name: 'Shopping District Tour',
-        category: 'shopping',
-        price: 35,
-        duration: '3 hours',
-        description: 'Explore the best shopping areas and markets',
-        location: {
-          lat: baseCoords.lat + (Math.random() - 0.5) * 0.02,
-          lng: baseCoords.lng + (Math.random() - 0.5) * 0.02
+    try {
+      console.log('🔍 Calling real venue discovery system...')
+      
+      // Simple Google Places API call via proxy instead of complex VenueDiscoveryEngine
+      const venueSearchUrl = `${process.env.URL || 'http://localhost:8888'}/.netlify/functions/google-places-proxy`
+      
+      // Get coordinates for destination first
+      const geocodeResponse = await fetch(`${venueSearchUrl}?endpoint=geocode&params.address=${encodeURIComponent(destination)}`)
+      
+      if (!geocodeResponse.ok) {
+        throw new Error('Geocoding failed')
+      }
+      
+      const geocodeData = await geocodeResponse.json()
+      const location = geocodeData.results[0]?.geometry?.location
+      
+      if (!location) {
+        throw new Error('Could not geocode destination')
+      }
+      
+      // Search for venues based on categories
+      const keywords = categories.includes('food') ? ['restaurants', 'cafes'] : 
+                      categories.includes('culture') ? ['museums', 'attractions'] :
+                      ['tourist_attraction']
+      
+      const allVenues = []
+      
+      // Search for venues with different keywords (limit searches to save time)
+      for (const keyword of keywords.slice(0, 2)) { // Only 2 searches max
+        try {
+          const venueResponse = await fetch(
+            `${venueSearchUrl}?endpoint=nearbysearch&params.location=${location.lat},${location.lng}&params.radius=5000&params.keyword=${encodeURIComponent(keyword)}`
+          )
+          
+          if (venueResponse.ok) {
+            const venueData = await venueResponse.json()
+            if (venueData.results) {
+              allVenues.push(...venueData.results.slice(0, 8)) // Limit per keyword
+            }
+          }
+        } catch (err) {
+          console.warn(`Failed to search for ${keyword}:`, err.message)
         }
       }
-    ]
+      
+      if (allVenues.length > 0) {
+        // Transform venues to activity format and limit to top 12
+        const activities = allVenues.slice(0, 12).map(venue => ({
+          name: venue.name,
+          category: mapVenueTypeToCategory(venue.types?.[0]) || 'culture',
+          price: venue.price_level ? venue.price_level * 25 : 35,
+          duration: '2-3 hours',
+          description: `Experience ${venue.name} in ${destination}`,
+          location: venue.geometry?.location,
+          rating: venue.rating,
+          address: venue.vicinity,
+          source: 'google_places'
+        }))
+        
+        console.log(`✅ Found ${activities.length} real venues from Google Places`)
+        return activities
+      } else {
+        throw new Error('No venues found')
+      }
+      
+    } catch (error) {
+      console.warn('⚠️ Venue discovery failed, using simplified mock data:', error.message)
+      
+      // Minimal fallback activities to reduce AI processing time
+      const fallbackActivities = [
+        {
+          name: `${destination} Food Tour`,
+          category: 'food',
+          price: 65,
+          duration: '3 hours',
+          description: `Discover authentic local cuisine in ${destination}`,
+          source: 'fallback'
+        },
+        {
+          name: `${destination} Cultural Experience`,
+          category: 'culture', 
+          price: 45,
+          duration: '2 hours',
+          description: `Explore the cultural highlights of ${destination}`,
+          source: 'fallback'
+        }
+      ]
+      
+      // Filter by selected categories
+      return fallbackActivities.filter(activity => 
+        categories.includes(activity.category)
+      )
+    }
+  }
+  
+  // Helper function to map Google Places types to our categories
+  function mapVenueTypeToCategory(placeType) {
+    const typeMapping = {
+      'restaurant': 'food',
+      'cafe': 'food', 
+      'bar': 'nightlife',
+      'museum': 'culture',
+      'tourist_attraction': 'culture',
+      'shopping_mall': 'shopping',
+      'amusement_park': 'adventure',
+      'park': 'adventure',
+      'night_club': 'nightlife'
+    }
     
-    // Filter by selected categories
-    return activities.filter(activity => 
-      categories.includes(activity.category)
-    )
+    return typeMapping[placeType] || 'culture'
   }
   
   async function generateAIItinerary({ tripData, flights, hotels, activities }) {
-    // Call DeepSeek API for intelligent itinerary generation
+    // Call DeepSeek API with proper timeout handling (fixed race condition)
     try {
       // Try both environment variable names (Netlify functions don't use VITE_ prefix)
       const deepseekApiKey = process.env.DEEPSEEK_API_KEY || process.env.VITE_DEEPSEEK_API_KEY
@@ -371,53 +403,99 @@ export async function handler(event, context) {
 
       const prompt = createItineraryPrompt(tripData, activities, hotels)
       
-      console.log('🤖 Calling DeepSeek API for itinerary generation...')
+      console.log('🤖 Calling DeepSeek API with 15-second timeout (race condition fixed)...')
+      console.log('📝 Prompt length:', prompt.length, 'characters')
       
-      const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${deepseekApiKey}`
-        },
-        body: JSON.stringify({
-          model: 'deepseek-chat',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert travel planner with deep knowledge of destinations worldwide. Create detailed, personalized itineraries with specific activities, timing, and local insights.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 2000,
-          temperature: 0.7
+      // Create AbortController for fetch timeout
+      const controller = new AbortController()
+      let fetchTimeoutId
+      let raceTimeoutId
+      
+      try {
+        // Create the API call promise with proper cleanup
+        const apiPromise = fetch('https://api.deepseek.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${deepseekApiKey}`
+          },
+          body: JSON.stringify({
+            model: 'deepseek-chat',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a travel planner. Create concise itineraries. Be extremely brief and use minimal tokens.'
+              },
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            max_tokens: 800,
+            temperature: 0.1,
+            stream: false
+          }),
+          signal: controller.signal
         })
-      })
 
-      if (!response.ok) {
-        throw new Error(`DeepSeek API error: ${response.statusText}`)
+        // Set up fetch timeout
+        fetchTimeoutId = setTimeout(() => {
+          console.log('⏰ Fetch timeout - aborting request after 12 seconds')
+          controller.abort()
+        }, 12000)
+        
+        // Set up race timeout  
+        const timeoutPromise = new Promise((_, reject) => {
+          raceTimeoutId = setTimeout(() => {
+            console.log('⏰ Overall timeout - 15 seconds elapsed')
+            reject(new Error('DeepSeek API timeout after 15 seconds'))
+          }, 15000)
+        })
+
+        // Race between API call and timeout
+        console.log('📡 Starting API call race...')
+        const response = await Promise.race([apiPromise, timeoutPromise])
+
+        // SUCCESS - Clear all timeouts
+        clearTimeout(fetchTimeoutId)
+        clearTimeout(raceTimeoutId)
+        
+        console.log('📡 DeepSeek fetch completed successfully, status:', response.status)
+
+        if (!response.ok) {
+          throw new Error(`DeepSeek API error: ${response.status} ${response.statusText}`)
+        }
+
+        console.log('📦 Parsing DeepSeek response...')
+        const aiResponse = await response.json()
+        console.log('🤖 DeepSeek response received and parsed')
+        
+        const aiContent = aiResponse.choices[0]?.message?.content
+        
+        if (!aiContent) {
+          throw new Error('No content received from DeepSeek')
+        }
+
+        console.log('📝 AI response length:', aiContent.length, 'characters')
+        console.log('📝 AI response preview:', aiContent.substring(0, 200) + '...')
+
+        // Parse the AI response and structure it
+        const structuredItinerary = parseAIResponse(aiContent, tripData, activities, hotels, flights)
+        
+        console.log('✅ AI-generated itinerary created successfully')
+        return structuredItinerary
+
+      } catch (error) {
+        // Cleanup timeouts on any error
+        if (fetchTimeoutId) clearTimeout(fetchTimeoutId)
+        if (raceTimeoutId) clearTimeout(raceTimeoutId)
+        throw error
       }
-
-      const aiResponse = await response.json()
-      console.log('🤖 DeepSeek response received')
-      
-      const aiContent = aiResponse.choices[0]?.message?.content
-      
-      if (!aiContent) {
-        throw new Error('No content received from DeepSeek')
-      }
-
-      // Parse the AI response and structure it
-      const structuredItinerary = parseAIResponse(aiContent, tripData, activities, hotels, flights)
-      
-      console.log('✅ AI-generated itinerary created successfully')
-      return structuredItinerary
 
     } catch (error) {
-      console.error('DeepSeek API error:', error)
-      console.log('Falling back to structured itinerary generation')
+      console.warn('🕐 DeepSeek API failed/timeout:', error.message)
+      console.log('📊 Error type:', error.constructor.name)
+      console.log('✅ Falling back to structured itinerary generation with REAL data')
       return generateStructuredItinerary({ tripData, flights, hotels, activities })
     }
   }
@@ -425,52 +503,15 @@ export async function handler(event, context) {
   function createItineraryPrompt(tripData, activities, hotels) {
     const days = calculateDays(tripData.startDate, tripData.endDate)
     
-    return `Create a detailed ${days}-day itinerary for ${tripData.destination} for ${tripData.people} travelers.
+    // Ultra-streamlined prompt for faster processing
+    const topActivities = activities.slice(0, 5) // Only top 5 activities
+    
+    return `Create ${days}-day Tokyo itinerary. Budget: $${tripData.totalBudget}. ${tripData.people} people.
 
-TRIP DETAILS:
-- Destination: ${tripData.destination}
-- Dates: ${tripData.startDate} to ${tripData.endDate}
-- Budget: $${tripData.totalBudget} total
-- Interests: ${tripData.categories.join(', ')}
-- Special requests: ${tripData.specialRequests || 'None'}
+Activities: ${topActivities.map(a => a.name).join(', ')}
 
-AVAILABLE ACTIVITIES:
-${activities.map(a => `- ${a.name}: ${a.description} ($${a.price}, ${a.duration})`).join('\n')}
-
-REQUIREMENTS:
-1. Create exactly ${days} days with morning (9:00 AM), afternoon (2:00 PM), and evening (7:00 PM) activities
-2. Include specific activity names, descriptions, and estimated costs
-3. Provide insider tips and local recommendations
-4. Consider the budget of $${tripData.totalBudget}
-5. Match activities to interests: ${tripData.categories.join(', ')}
-6. Include realistic timing and logistics
-
-RESPONSE FORMAT (JSON):
-{
-  "days": [
-    {
-      "dayNumber": 1,
-      "title": "Day 1 Title",
-      "morning": {
-        "activity": "Activity Name",
-        "description": "Detailed description",
-        "estimatedCost": 50
-      },
-      "afternoon": {
-        "activity": "Activity Name", 
-        "description": "Detailed description",
-        "estimatedCost": 60
-      },
-      "evening": {
-        "activity": "Activity Name",
-        "description": "Detailed description", 
-        "estimatedCost": 45
-      }
-    }
-  ],
-  "insiderTips": ["tip1", "tip2", "tip3"],
-  "overview": "Trip overview description"
-}`
+Return only JSON:
+{"days":[{"dayNumber":1,"morning":{"activity":"Name","cost":50},"afternoon":{"activity":"Name","cost":60},"evening":{"activity":"Name","cost":45}}],"overview":"Brief summary"}`
   }
 
   function parseAIResponse(aiContent, tripData, activities, hotels, flights) {

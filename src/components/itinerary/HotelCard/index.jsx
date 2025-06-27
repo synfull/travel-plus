@@ -25,12 +25,75 @@ export default function HotelCard({ hotel, onBook, className = '' }) {
     source
   } = hotel
 
+  // Fix rating precision - round to 1 decimal place
+  const formattedRating = rating ? Math.round(rating * 10) / 10 : null
+
+  // Use hotel images if available, otherwise use smart themed fallbacks
+  const getHotelImages = () => {
+    // If hotel already has images (from API), use them
+    if (images && images.length > 0) {
+      return images
+    }
+    
+    // Generate themed fallback images based on hotel characteristics
+    const cityName = location?.cityName || location || 'destination'
+    const isLuxury = formattedRating >= 4.5
+    const isBeach = location?.address?.toLowerCase().includes('beach') || 
+                   cityName.toLowerCase().includes('beach') ||
+                   name.toLowerCase().includes('beach')
+    const isCity = location?.address?.toLowerCase().includes('downtown') || 
+                  location?.address?.toLowerCase().includes('center') ||
+                  cityName.toLowerCase().includes('city')
+    const isBoutique = name.toLowerCase().includes('boutique') || 
+                      name.toLowerCase().includes('inn') ||
+                      formattedRating >= 4.3
+    
+    let fallbackImages = []
+    
+    if (isLuxury) {
+      fallbackImages = [
+        'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?w=800&h=600&fit=crop&auto=format', // Luxury hotel exterior
+        'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800&h=600&fit=crop&auto=format', // Luxury hotel room
+        'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=800&h=600&fit=crop&auto=format'  // Luxury hotel lobby
+      ]
+    } else if (isBeach) {
+      fallbackImages = [
+        'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=800&h=600&fit=crop&auto=format', // Beach resort
+        'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=800&h=600&fit=crop&auto=format', // Beach hotel room
+        'https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?w=800&h=600&fit=crop&auto=format'  // Beach hotel pool
+      ]
+    } else if (isBoutique) {
+      fallbackImages = [
+        'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=800&h=600&fit=crop&auto=format', // Boutique hotel exterior
+        'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?w=800&h=600&fit=crop&auto=format', // Boutique hotel room
+        'https://images.unsplash.com/photo-1590490360182-c33d57733427?w=800&h=600&fit=crop&auto=format'  // Boutique hotel interior
+      ]
+    } else if (isCity) {
+      fallbackImages = [
+        'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&h=600&fit=crop&auto=format', // City hotel exterior
+        'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?w=800&h=600&fit=crop&auto=format', // City hotel room
+        'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=800&h=600&fit=crop&auto=format'  // City hotel view
+      ]
+    } else {
+      // Standard hotel images
+      fallbackImages = [
+        'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&h=600&fit=crop&auto=format', // Hotel exterior
+        'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=800&h=600&fit=crop&auto=format', // Hotel room
+        'https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?w=800&h=600&fit=crop&auto=format'  // Hotel amenities
+      ]
+    }
+    
+    return fallbackImages
+  }
+
+  const hotelImages = getHotelImages()
+
   const nextImage = () => {
-    setCurrentImageIndex((prev) => (prev + 1) % images.length)
+    setCurrentImageIndex((prev) => (prev + 1) % hotelImages.length)
   }
 
   const prevImage = () => {
-    setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length)
+    setCurrentImageIndex((prev) => (prev - 1 + hotelImages.length) % hotelImages.length)
   }
 
   const getLocationIcon = () => {
@@ -74,10 +137,10 @@ export default function HotelCard({ hotel, onBook, className = '' }) {
       className={`glass-card overflow-hidden ${className}`}
     >
       {/* Image Gallery */}
-      {images.length > 0 && (
+      {hotelImages.length > 0 && (
         <div className="relative h-48 overflow-hidden">
           <img
-            src={images[currentImageIndex]}
+            src={hotelImages[currentImageIndex]}
             alt={name}
             className="w-full h-full object-cover"
             onError={(e) => {
@@ -85,7 +148,7 @@ export default function HotelCard({ hotel, onBook, className = '' }) {
             }}
           />
           
-          {images.length > 1 && (
+          {hotelImages.length > 1 && (
             <>
               <button
                 onClick={prevImage}
@@ -101,7 +164,7 @@ export default function HotelCard({ hotel, onBook, className = '' }) {
               </button>
               
               <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex space-x-1">
-                {images.map((_, index) => (
+                {hotelImages.map((_, index) => (
                   <button
                     key={index}
                     onClick={() => setCurrentImageIndex(index)}
@@ -123,10 +186,10 @@ export default function HotelCard({ hotel, onBook, className = '' }) {
             <h3 className="text-xl font-semibold text-white mb-2">{name}</h3>
             
             <div className="flex items-center space-x-4 mb-2">
-              {rating && (
+              {formattedRating && (
                 <div className="flex items-center space-x-1">
-                  <StarRating rating={rating} size="sm" />
-                  <span className="text-sm text-gray-300">({rating})</span>
+                  <StarRating rating={formattedRating} size="sm" />
+                  <span className="text-sm text-gray-300">({formattedRating})</span>
                 </div>
               )}
               
